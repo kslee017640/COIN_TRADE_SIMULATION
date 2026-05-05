@@ -3,36 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.1 (Cloud Sync)</title>
+    <title>통합 관제 스테이션 V4.2 (Hourly Sync)</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root { --main-blue: #004ea1; --up-red: #e74c3c; --down-blue: #2980b9; }
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
         .card { background: white; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
-        
-        /* 제어판 스타일 */
         .control-panel { display: flex; flex-wrap: wrap; gap: 15px; background: #2c3e50; color: white; align-items: flex-end; }
         .setting-item { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
         label { font-size: 11px; color: #bdc3c7; font-weight: bold; }
         select { padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #ecf0f1; font-weight: bold; }
-        
-        /* 버튼 스타일 */
         .btn { cursor: pointer; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
         .btn-sync { background: var(--main-blue); color: white; }
-        .btn-sync:hover { background: #003a7a; }
         .btn-reset { background: #e67e22; color: white; margin-left: 10px; }
-
-        /* 결과 표 스타일 */
         table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; }
         th, td { border: 1px solid #eee; padding: 10px; text-align: center; }
         th { background: #f8f9fa; color: #666; }
         .coin-name { font-weight: bold; color: var(--main-blue); font-size: 14px; }
-
-        /* 차트 구역 */
         .chart-container { width: 100%; height: 380px; margin-top: 10px; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; background: white; }
         .chart-title { font-size: 15px; font-weight: bold; margin-top: 20px; padding-left: 10px; border-left: 5px solid var(--main-blue); color: #333; }
         .log-area { font-size: 11px; height: 100px; overflow-y: auto; background: #1e272e; color: #d2dae2; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; }
-        
         .status-bar { text-align: right; font-size: 11px; color: #7f8c8d; margin-bottom: 5px; }
     </style>
 </head>
@@ -51,14 +41,14 @@
             </select>
         </div>
         <div style="display: flex;">
-            <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 수동 동기화</button>
-            <button class="btn btn-reset" onclick="resetData()">🔄 데이터 초기화</button>
+            <button class="btn btn-sync" onclick="manualSync()">☁️ 수동 동기화</button>
+            <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
         </div>
     </div>
 
     <div class="card">
-        <h3>📊 4대 종목 통합 성과 (구글 드라이브 연동)</h3>
-        <div class="status-bar" id="sync-status">마지막 동기화: 대기 중...</div>
+        <h3>📊 4대 종목 통합 성과 (1시간 자동 동기화 모드)</h3>
+        <div class="status-bar" id="sync-status">클라우드 연결 대기 중...</div>
         <table id="result-table">
             <thead>
                 <tr>
@@ -76,68 +66,60 @@
     <div id="charts-area"></div>
 
 <script>
-// --- [회원님의 클라우드 브릿지 주소] ---
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzk3RlYiDQtn0_iyDwHIpAGYoVOM3YY8ELyJ-GXCvhtAzDWF2QOM-uBnBNRkln_RjLjSw/exec";
-
 const coins = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-DOGE"];
 const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XRP": "리플", "KRW-DOGE": "도지코인"};
 let coinData = {};
 let chartObjects = {};
-let emaWindow = 120; // 초기값 120분
+let emaWindow = 120;
 
-// --- [초기화 및 로딩] ---
 function initData() {
     const saved = localStorage.getItem('crypto_sim_v4');
-    if (saved) {
-        coinData = JSON.parse(saved);
-    } else {
-        coins.forEach(s => coinData[s] = {balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: []});
-    }
+    if (saved) { coinData = JSON.parse(saved); } 
+    else { coins.forEach(s => coinData[s] = {balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: []}); }
 }
 
 function resetData() {
-    if(confirm("모든 데이터를 초기화하고 처음부터 다시 시작할까요?")) {
+    if(confirm("모든 데이터를 초기화할까요?")) {
         localStorage.removeItem('crypto_sim_v4');
         location.reload();
     }
 }
 
-// --- [클라우드 연동 함수] ---
+// --- [클라우드 연동] ---
 async function cloudSync() {
     try {
-        const response = await fetch(GAS_URL, {
+        await fetch(GAS_URL, {
             method: 'POST',
-            mode: 'no-cors', // 브라우저 보안 정책 대응
+            mode: 'no-cors',
             body: JSON.stringify({ action: 'sync', data: coinData })
         });
-        document.getElementById('sync-status').innerText = "마지막 동기화: " + new Date().toLocaleTimeString() + " (성공)";
+        const now = new Date();
+        const nextSync = new Date(now.getTime() + 3600000).toLocaleTimeString();
+        document.getElementById('sync-status').innerText = `✅ 동기화 완료 (${now.toLocaleTimeString()}) | 다음 자동 동기화: ${nextSync}`;
     } catch (e) {
-        console.error("Sync Failed", e);
-        document.getElementById('sync-status').innerText = "마지막 동기화 실패";
+        document.getElementById('sync-status').innerText = "⚠️ 클라우드 동기화 실패";
     }
 }
 
 function manualSync() {
     cloudSync();
-    alert("구글 드라이브(시트)로 현재 데이터를 전송했습니다.");
+    alert("현재 시뮬레이션 데이터를 구글 드라이브로 전송했습니다.");
 }
 
-// --- [차트 엔진] ---
+// --- [차트 및 엔진] ---
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
         const title = document.createElement('div');
         title.className = 'chart-title';
         title.id = `title-${symbol}`;
-        title.innerText = `📈 ${coinNames[symbol]} (${symbol}) - 밴드: ${emaWindow}분`;
-        
+        title.innerText = `📈 ${coinNames[symbol]} (${symbol})`;
         const container = document.createElement('div');
         container.className = 'chart-container';
-        
         const logArea = document.createElement('div');
         logArea.id = `log-${symbol}`;
         logArea.className = 'log-area';
-        
         area.appendChild(title);
         area.appendChild(container);
         area.appendChild(logArea);
@@ -147,20 +129,18 @@ function initCharts() {
             timeScale: { timeVisible: true },
             grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } }
         });
-
         chartObjects[symbol] = {
             chart: chart,
             candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
-            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }), // +3.0 녹색
-            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1 }), // +1.5 연두색
-            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }), // 중앙 노란색
-            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1 }), // -1.5 주황색
-            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1 }) // -3.0 빨간색
+            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }),
+            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1 }),
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }),
+            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1 }),
+            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1 })
         };
     });
 }
 
-// --- [엔지니어링 계산기] ---
 function calculateEMA(data, window) {
     const k = 2 / (window + 1);
     let emaArray = [data[0]];
@@ -184,13 +164,9 @@ function calculateRollingStd(data, window, emaData) {
 
 function changeParameters() {
     emaWindow = parseInt(document.getElementById('ema-period').value);
-    coins.forEach(s => {
-        document.getElementById(`title-${s}`).innerText = `📈 ${coinNames[s]} (${s}) - 밴드: ${emaWindow}분`;
-    });
     runCycle();
 }
 
-// --- [메인 시뮬레이션] ---
 async function runCycle() {
     for (const symbol of coins) {
         try {
@@ -204,7 +180,7 @@ async function runCycle() {
             }));
 
             const closes = rawData.map(c => c.close);
-            const emaCount = Math.floor(emaWindow / 10); // 10분봉 개수로 환산
+            const emaCount = Math.floor(emaWindow / 10);
             const emaValues = calculateEMA(closes, emaCount);
             const stdValues = calculateRollingStd(closes, emaCount, emaValues);
 
@@ -217,9 +193,9 @@ async function runCycle() {
             obj.down3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 })));
 
             const curPrice = rawData[rawData.length - 1].close;
-            const b = { up3: emaValues[emaValues.length-1] + stdValues[emaValues.length-1]*3, up15: emaValues[emaValues.length-1] + stdValues[emaValues.length-1]*1.5, down15: emaValues[emaValues.length-1] - stdValues[emaValues.length-1]*1.5, down3: emaValues[emaValues.length-1] - stdValues[emaValues.length-1]*3 };
+            const lastIdx = emaValues.length - 1;
+            const b = { up3: emaValues[lastIdx] + stdValues[lastIdx]*3, up15: emaValues[lastIdx] + stdValues[lastIdx]*1.5, down15: emaValues[lastIdx] - stdValues[lastIdx]*1.5, down3: emaValues[lastIdx] - stdValues[lastIdx]*3 };
 
-            // 전략 1안
             if (curPrice <= b.down15) {
                 execute(symbol, 1, 'buy', 5000, curPrice);
                 if (curPrice <= b.down3) execute(symbol, 1, 'buy', 5000, curPrice);
@@ -227,11 +203,10 @@ async function runCycle() {
                 execute(symbol, 1, 'sell', 5000, curPrice);
                 if (curPrice >= b.up3) execute(symbol, 1, 'sell', 5000, curPrice);
             }
-            // 전략 2안
             if (curPrice <= b.down15) execute(symbol, 2, 'buy', 5000, curPrice);
             else if (curPrice >= b.up15) execute(symbol, 2, 'sell', 5000, curPrice);
 
-        } catch (e) { console.warn(symbol + " 수신 대기 중..."); }
+        } catch (e) { console.warn(symbol + " 업데이트 중..."); }
     }
     updateUI();
     localStorage.setItem('crypto_sim_v4', JSON.stringify(coinData));
@@ -269,13 +244,14 @@ function updateUI() {
     });
 }
 
-// 10분마다 자동으로 클라우드 동기화
-setInterval(cloudSync, 600000);
+// --- [주기 설정] ---
+setInterval(runCycle, 60000); // 1분마다 매매 판단
+setInterval(cloudSync, 3600000); // 1시간(3,600,000ms)마다 클라우드 저장
 
 initData();
 initCharts();
 runCycle();
-setInterval(runCycle, 60000);
+cloudSync(); // 시작할 때 한 번 저장
 </script>
 </body>
 </html>
