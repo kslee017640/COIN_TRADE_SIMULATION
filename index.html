@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.7 (10-Min Cycle)</title>
+    <title>통합 관제 스테이션 V4.8 (Chart Fix & Star Markers)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -70,7 +70,6 @@
     <div id="charts-area"></div>
 
 <script>
-// 업비트와 구글 시트 연결을 위한 주소와 코인 이름들이에요
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzk3RlYiDQtn0_iyDwHIpAGYoVOM3YY8ELyJ-GXCvhtAzDWF2QOM-uBnBNRkln_RjLjSw/exec";
 const coins = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-DOGE"];
 const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XRP": "리플", "KRW-DOGE": "도지코인"};
@@ -79,7 +78,7 @@ let chartObjects = {};
 let emaWindow = 120;
 let wakeLock = null;
 
-// 태블릿 화면이 꺼지지 않게 꽉 붙잡아두는 기능이에요
+// 화면 꺼짐 방지 기능
 async function requestWakeLock() {
     try {
         if ('wakeLock' in navigator) {
@@ -97,11 +96,13 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// 컴퓨터(브라우저)에 저장된 내 돈 정보를 가져오는 함수예요
+// 데이터 초기화: 매매 위치를 기억할 markers 배열을 추가했어요!
 function initData() {
     const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
         coinData = JSON.parse(saved); 
+        // 기존 데이터에 markers가 없으면 새로 만들어줘요
+        coins.forEach(s => { if(!coinData[s].markers) coinData[s].markers = []; });
     } else { 
         coins.forEach(s => {
             coinData[s] = {
@@ -109,13 +110,13 @@ function initData() {
                 coin: 0, 
                 lastPrice: 0,
                 logs: [],
+                markers: [], // 매매 시점 별표를 저장하는 곳이에요
                 isNewAccount: true 
             };
         });
     }
 }
 
-// 모든 기록을 지우고 처음부터 다시 시작하는 버튼이에요
 function resetData() {
     if(confirm("모든 데이터를 초기화하고 다시 시작할까요?")) {
         localStorage.removeItem('crypto_sim_v4_4');
@@ -123,7 +124,6 @@ function resetData() {
     }
 }
 
-// 내 소중한 데이터를 구글 시트에 백업해두는 함수예요
 async function cloudSync() {
     try {
         await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'sync', data: coinData }) });
@@ -133,7 +133,6 @@ async function cloudSync() {
 
 function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
-// 화면에 멋진 코인 그래프 그림판을 만드는 함수예요
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -151,7 +150,8 @@ function initCharts() {
 
         const chart = LightweightCharts.createChart(container, {
             layout: { textColor: '#333' },
-            grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } }
+            grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } },
+            timeScale: { timeVisible: true, secondsVisible: false }
         });
         chartObjects[symbol] = {
             chart: chart,
@@ -164,7 +164,6 @@ function initCharts() {
     });
 }
 
-// 코인 가격의 평균을 구하는 수학 선생님 같은 함수예요
 function calculateEMA(data, window) {
     const k = 2 / (window + 1);
     let emaArray = [data[0]];
@@ -172,7 +171,6 @@ function calculateEMA(data, window) {
     return emaArray;
 }
 
-// 가격이 얼마나 위아래로 움직였는지 계산하는 함수예요
 function calculateRollingStd(data, window, width) {
     let stdArray = [];
     for (let i = 0; i < data.length; i++) {
@@ -190,7 +188,7 @@ function changeParameters() {
     runCycle();
 }
 
-// [핵심!] 코인 가격을 확인하고 사고팔지 결정하는 메인 로직이에요
+// 10분마다 실행되는 핵심 함수예요
 async function runCycle() {
     for (const symbol of coins) {
         try {
@@ -198,6 +196,10 @@ async function runCycle() {
             const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&t=${Date.now()}`;
             const response = await fetch(proxyUrl);
             const json = await response.json();
+            
+            // 데이터가 제대로 왔는지 확인해요
+            if (!json || !json.contents) throw new Error("데이터 응답 없음");
+            
             const rawData = JSON.parse(json.contents).reverse().map(item => ({
                 time: Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000),
                 open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
@@ -209,15 +211,25 @@ async function runCycle() {
             const stdValues = calculateRollingStd(closes, emaCount, emaCount);
 
             const obj = chartObjects[symbol];
+            const target = coinData[symbol];
+            
+            // 차트에 캔들과 선들을 그려요
             obj.candle.setData(rawData);
             obj.up3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 3 })));
             obj.up15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
             obj.mid.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] })));
             obj.down15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
 
+            // [추가] 매매 별표를 차트 위에 뿌려줘요
+            obj.candle.setMarkers(target.markers || []);
+            
+            // [추가] 차트가 텅 비어 보이지 않게 데이터를 화면에 꽉 채워줘요
+            obj.chart.timeScale().fitContent();
+
             const curPrice = rawData[rawData.length - 1].close;
-            const target = coinData[symbol];
+            const curTime = rawData[rawData.length - 1].time; // 현재 캔들의 시간이에요
             target.lastPrice = curPrice;
+            target.lastTime = curTime; // 매매 시점 기록을 위해 저장해요
 
             if (target.isNewAccount) {
                 target.coin = 1000000 / curPrice;
@@ -232,7 +244,7 @@ async function runCycle() {
             const up15 = mid + std * 1.5;
             const down15 = mid - std * 1.5;
 
-            // 표준편차 규칙에 따라 10분마다 딱 한 번씩만 판단해요!
+            // 매매 판단 로직 (V4.7과 동일해요)
             if (curPrice > up3) {
                 execute(symbol, 'sell', 10000, curPrice);
             } else if (curPrice > up15) {
@@ -243,33 +255,49 @@ async function runCycle() {
                 execute(symbol, 'buy', 5000, curPrice);
             }
 
-        } catch (e) { console.warn(symbol + " 업데이트 중..."); }
+        } catch (e) { console.error(symbol + " 오류:", e); }
     }
     updateUI();
     localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
-// 실제로 내 지갑에서 돈을 빼고 코인을 넣는 계산을 해요
+// 실제 사고파는 동작과 함께 별표를 기록해요
 function execute(symbol, type, krw, price) {
     const data = coinData[symbol];
     if (type === 'buy' && data.balance >= krw) {
         data.balance -= krw; data.coin += krw / price;
         addLog(symbol, `🟢 매수: ${krw.toLocaleString()}원 (가격: ${price.toLocaleString()})`);
+        
+        // [추가] 매수 별표(초록색)를 기록해요
+        data.markers.push({
+            time: data.lastTime,
+            position: 'belowBar',
+            color: '#27ae60',
+            shape: 'star',
+            text: '매수'
+        });
     } else if (type === 'sell' && data.coin > 0) {
         const sellAmt = Math.min(data.coin * price, krw);
         data.balance += sellAmt; data.coin -= sellAmt / price;
         addLog(symbol, `🔴 매도: ${Math.floor(sellAmt).toLocaleString()}원 (가격: ${price.toLocaleString()})`);
+        
+        // [추가] 매도 별표(빨간색)를 기록해요
+        data.markers.push({
+            time: data.lastTime,
+            position: 'aboveBar',
+            color: '#e74c3c',
+            shape: 'star',
+            text: '매도'
+        });
     }
 }
 
-// 무슨 일이 있었는지 로그 창에 기록을 남겨요
 function addLog(symbol, msg) {
     const time = new Date().toLocaleTimeString();
     coinData[symbol].logs.unshift(`[${time}] ${msg}`);
     if (coinData[symbol].logs.length > 20) coinData[symbol].logs.pop();
 }
 
-// 표에 나오는 숫자들을 최신 정보로 갱신해요
 function updateUI() {
     const tbody = document.querySelector('#result-table tbody');
     tbody.innerHTML = '';
@@ -289,16 +317,13 @@ function updateUI() {
     });
 }
 
-// --- [여기가 수정된 부분이에요!] ---
-// 600000밀리초(10분)마다 가격을 확인하고 매매를 결정해요
+// 10분마다 실행해요
 setInterval(runCycle, 600000); 
-// 1시간마다 구글 시트에 안전하게 백업해요
 setInterval(cloudSync, 3600000); 
-// ---------------------------------
 
 initData();
 initCharts();
-runCycle();
+runCycle(); // 페이지 열자마자 한 번 실행!
 requestWakeLock();
 </script>
 </body>
