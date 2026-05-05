@@ -3,93 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>업비트 실시간 시뮬레이터</title>
+    <title>코인 통합 시뮬레이션 관제소</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f5f7fa; margin: 0; padding: 10px; }
-        .card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { font-size: 18px; margin-top: 0; color: #333; }
-        .price-info { font-size: 24px; font-weight: bold; color: #004ea1; margin: 10px 0; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .strategy-box { padding: 10px; border-radius: 10px; border: 1px solid #ddd; }
-        .strategy-1 { background-color: #fff9f9; }
-        .strategy-2 { background-color: #f9f9ff; }
-        .status-label { font-size: 11px; color: #666; }
-        .status-value { font-size: 15px; font-weight: bold; color: #2c3e50; }
-        #chart { width: 100%; height: 400px; margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid #eee; }
-        .log { font-size: 11px; height: 120px; overflow-y: auto; background: #eee; padding: 8px; margin-top: 10px; border-radius: 5px; font-family: monospace; }
-        select { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid #004ea1; font-size: 16px; margin-bottom: 10px; font-weight: bold; }
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
+        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        h1 { font-size: 20px; text-align: center; color: #333; margin-bottom: 20px; }
+        
+        /* 시뮬레이션 결과 표 스타일 */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background-color: #f8f9fa; color: #555; }
+        .coin-name { font-weight: bold; color: #004ea1; }
+        .strategy-1 { color: #e74c3c; }
+        .strategy-2 { color: #2980b9; }
+
+        /* 차트 구역 스타일 */
+        .chart-container { width: 100%; height: 350px; margin-top: 10px; border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
+        .chart-title { font-size: 16px; font-weight: bold; margin-top: 10px; color: #444; border-left: 4px solid #004ea1; padding-left: 10px; }
+        
+        .update-time { text-align: right; font-size: 12px; color: #999; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>종목 선택 (Upbit 실시간)</h2>
-    <select id="coin-selector" onchange="changeCoin()">
-        <option value="KRW-BTC">비트코인 (BTC)</option>
-        <option value="KRW-ETH">이더리움 (ETH)</option>
-        <option value="KRW-XRP">리플 (XRP)</option>
-        <option value="KRW-DOGE">도지코인 (DOGE)</option>
-    </select>
-    <div id="current-price" class="price-info">데이터 연결 중...</div>
-    <div id="last-update" style="font-size: 12px; color: #999;">분석 로봇 가동 중</div>
-</div>
+    <h1>🚀 4대 종목 전략 통합 시뮬레이션</h1>
+    <div id="last-update" class="update-time">데이터 연결 중...</div>
 
-<div class="card">
-    <h2 id="strategy-title">비트코인 시뮬레이션 결과</h2>
-    <div class="grid">
-        <div class="strategy-box strategy-1">
-            <div class="status-label">전략 1안 (-1.5/-3.0)</div>
-            <div id="balance-1" class="status-value">1,000,000 원</div>
-            <div id="asset-1" class="status-label">코인: 0개</div>
-        </div>
-        <div class="strategy-box strategy-2">
-            <div class="status-label">전략 2안 (-1.5 전용)</div>
-            <div id="balance-2" class="status-value">1,000,000 원</div>
-            <div id="asset-2" class="status-label">코인: 0개</div>
-        </div>
+    <!-- 시뮬레이션 결과 표 -->
+    <div class="card">
+        <h2>📊 전략별 성과 비교 (초기자산 종목당 100만원)</h2>
+        <table id="result-table">
+            <thead>
+                <tr>
+                    <th>종목</th>
+                    <th>전략 1안 잔고</th>
+                    <th>전략 1안 코인</th>
+                    <th>전략 2안 잔고</th>
+                    <th>전략 2안 코인</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 자바스크립트가 내용을 채웁니다 -->
+            </tbody>
+        </table>
     </div>
-</div>
 
-<div class="card">
-    <h2>실시간 곡선 차트 (EMA 120 볼린저 밴드)</h2>
-    <div id="chart"></div>
-    <div id="trade-log" class="log">데이터 로딩 중...</div>
-</div>
+    <!-- 차트 구역 -->
+    <div id="charts-area">
+        <!-- BTC, ETH, XRP, DOGE 차트가 순서대로 생성됩니다 -->
+    </div>
 
 <script>
-const coinData = {
-    "KRW-BTC": { balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: [] },
-    "KRW-ETH": { balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: [] },
-    "KRW-XRP": { balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: [] },
-    "KRW-DOGE": { balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: [] }
-};
+// --- [기억 장치] 4개 종목 데이터 통합 관리 ---
+const coins = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-DOGE"];
+const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XRP": "리플", "KRW-DOGE": "도지코인"};
+const coinData = {};
+const chartObjects = {};
 
-let currentSelectedCoin = "KRW-BTC";
-
-const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-    layout: { textColor: '#333' },
-    timeScale: { timeVisible: true },
-    grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } }
+// 초기 데이터 세팅
+coins.forEach(symbol => {
+    coinData[symbol] = {
+        balance1: 1000000, coin1: 0,
+        balance2: 1000000, coin2: 0,
+        logs: []
+    };
 });
-const candleSeries = chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' });
-const upperSeries = chart.addLineSeries({ color: '#ff4d4d', lineWidth: 1 });
-const midSeries = chart.addLineSeries({ color: '#a29bfe', lineWidth: 1, lineStyle: 2 });
-const lowerSeries = chart.addLineSeries({ color: '#2ecc71', lineWidth: 1 });
 
-function changeCoin() {
-    currentSelectedCoin = document.getElementById('coin-selector').value;
-    const coinName = document.getElementById('coin-selector').options[document.getElementById('coin-selector').selectedIndex].text;
-    document.getElementById('strategy-title').innerText = coinName + " 시뮬레이션 결과";
-    candleSeries.setData([]);
-    upperSeries.setData([]);
-    midSeries.setData([]);
-    lowerSeries.setData([]);
-    updateUI(); 
-    updateSimulation(true); 
+// --- [엔지니어링] 차트 엔진 초기화 ---
+function initCharts() {
+    const area = document.getElementById('charts-area');
+    coins.forEach(symbol => {
+        const title = document.createElement('div');
+        title.className = 'chart-title';
+        title.innerText = `📈 ${coinNames[symbol]} (${symbol})`;
+        
+        const container = document.createElement('div');
+        container.id = `chart-${symbol}`;
+        container.className = 'chart-container';
+        
+        area.appendChild(title);
+        area.appendChild(container);
+
+        const chart = LightweightCharts.createChart(container, {
+            layout: { textColor: '#333' },
+            timeScale: { timeVisible: true },
+            grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } }
+        });
+
+        chartObjects[symbol] = {
+            chart: chart,
+            candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
+            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1, title: '+3.0σ' }), // 녹색
+            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1, title: '+1.5σ' }), // 연두색
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2, title: 'EMA' }), // 노란색
+            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1, title: '-1.5σ' }), // 주황색
+            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1, title: '-3.0σ' }) // 빨간색
+        };
+    });
 }
 
-// --- [엔지니어링] EMA 계산 함수 (MATLAB 스타일의 깔끔한 구현) ---
+// --- [계산 엔진] EMA 및 곡선 밴드 산출 ---
 function calculateEMA(data, window) {
     const k = 2 / (window + 1);
     let emaArray = [data[0]];
@@ -99,14 +113,9 @@ function calculateEMA(data, window) {
     return emaArray;
 }
 
-// --- [엔지니어링] 롤링 표준편차 계산 함수 ---
 function calculateRollingStd(data, window, emaData) {
     let stdArray = [];
     for (let i = 0; i < data.length; i++) {
-        if (i < 1) {
-            stdArray.push(0);
-            continue;
-        }
         const start = Math.max(0, i - window + 1);
         const subset = data.slice(start, i + 1);
         const mean = emaData[i];
@@ -116,117 +125,104 @@ function calculateRollingStd(data, window, emaData) {
     return stdArray;
 }
 
-async function fetchUpbitData(coin) {
-    const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${coin}&count=200`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&t=${Date.now()}`;
-    const response = await fetch(proxyUrl);
-    const json = await response.json();
-    const rawData = JSON.parse(json.contents);
-    
-    return rawData.reverse().map(item => ({
-        time: Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000),
-        open: item.opening_price,
-        high: item.high_price,
-        low: item.low_price,
-        close: item.trade_price
-    }));
-}
-
-async function updateSimulation(priority = false) {
-    const coins = priority ? [currentSelectedCoin] : Object.keys(coinData);
-    
-    for (const coin of coins) {
+// --- [배달 엔진] 업비트 데이터 수신 ---
+async function fetchAllData() {
+    for (const symbol of coins) {
         try {
-            const candles = await fetchUpbitData(coin);
-            const closes = candles.map(c => c.close);
-            
-            // [핵심] EMA 120 및 곡선형 밴드 계산
-            const emaValues = calculateEMA(closes, 120);
-            const stdValues = calculateRollingStd(closes, 120, emaValues);
+            const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&t=${Date.now()}`;
+            const response = await fetch(proxyUrl);
+            const json = await response.json();
+            const rawData = JSON.parse(json.contents).reverse().map(item => ({
+                time: Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000),
+                open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
+            }));
 
-            const lastIdx = candles.length - 1;
-            const currentPrice = candles[lastIdx].close;
-            const currentEMA = emaValues[lastIdx];
-            const currentStd = stdValues[lastIdx];
-
-            const bands = {
-                up: currentEMA + currentStd * 1.5,
-                mid: currentEMA,
-                low: currentEMA - currentStd * 1.5,
-                up3: currentEMA + currentStd * 3,
-                down3: currentEMA - currentStd * 3
-            };
-
-            if (coin === currentSelectedCoin) {
-                candleSeries.setData(candles);
-                upperSeries.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
-                midSeries.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] })));
-                lowerSeries.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
-                
-                document.getElementById('current-price').innerText = currentPrice.toLocaleString() + " 원";
-                document.getElementById('last-update').innerText = "최종 업데이트: " + new Date().toLocaleTimeString();
-            }
-
-            // --- 매매 로직 (동적 밴드 기준) ---
-            if (currentPrice <= bands.low) {
-                executeTrade(coin, 1, 'buy', 5000, currentPrice);
-                if (currentPrice <= bands.down3) executeTrade(coin, 1, 'buy', 5000, currentPrice);
-            } else if (currentPrice >= bands.up) {
-                executeTrade(coin, 1, 'sell', 5000, currentPrice);
-                if (currentPrice >= bands.up3) executeTrade(coin, 1, 'sell', 5000, currentPrice);
-            }
-
-            if (currentPrice <= bands.low) {
-                executeTrade(coin, 2, 'buy', 5000, currentPrice);
-            } else if (currentPrice >= bands.up) {
-                executeTrade(coin, 2, 'sell', 5000, currentPrice);
-            }
-
-            if (coin === currentSelectedCoin) updateUI();
+            processSimulation(symbol, rawData);
         } catch (e) {
-            console.warn(coin + " 데이터 대기 중...");
+            console.error(symbol + " 수신 에러");
         }
     }
+    updateTable();
+    document.getElementById('last-update').innerText = "최종 업데이트: " + new Date().toLocaleTimeString();
 }
 
-function executeTrade(coinCode, strategyNum, type, amount, price) {
-    const target = coinData[coinCode];
+// --- [전략 엔진] 실시간 매매 시뮬레이션 ---
+function processSimulation(symbol, candles) {
+    const closes = candles.map(c => c.close);
+    const emaValues = calculateEMA(closes, 120);
+    const stdValues = calculateRollingStd(closes, 120, emaValues);
+
+    const obj = chartObjects[symbol];
+    obj.candle.setData(candles);
+    obj.up3.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 3 })));
+    obj.up15.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
+    obj.mid.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] })));
+    obj.down15.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
+    obj.down3.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 })));
+
+    const curPrice = candles[candles.length - 1].close;
+    const curEMA = emaValues[emaValues.length - 1];
+    const curStd = stdValues[stdValues.length - 1];
+    
+    const bands = {
+        up3: curEMA + curStd * 3,
+        up15: curEMA + curStd * 1.5,
+        down15: curEMA - curStd * 1.5,
+        down3: curEMA - curStd * 3
+    };
+
+    const target = coinData[symbol];
+    // 전략 1안: 분할 매수/매도
+    if (curPrice <= bands.down15) {
+        execute(symbol, 1, 'buy', 5000, curPrice);
+        if (curPrice <= bands.down3) execute(symbol, 1, 'buy', 5000, curPrice);
+    } else if (curPrice >= bands.up15) {
+        execute(symbol, 1, 'sell', 5000, curPrice);
+        if (curPrice >= bands.up3) execute(symbol, 1, 'sell', 5000, curPrice);
+    }
+
+    // 전략 2안: 기본 매수/매도
+    if (curPrice <= bands.down15) execute(symbol, 2, 'buy', 5000, curPrice);
+    else if (curPrice >= bands.up15) execute(symbol, 2, 'sell', 5000, curPrice);
+}
+
+function execute(symbol, strategyNum, type, krw, price) {
+    const data = coinData[symbol];
     const balKey = strategyNum === 1 ? 'balance1' : 'balance2';
     const coinKey = strategyNum === 1 ? 'coin1' : 'coin2';
 
-    if (type === 'buy') {
-        if (target[balKey] >= amount) {
-            target[balKey] -= amount; 
-            target[coinKey] += amount / price; 
-            addTradeLog(coinCode, `[전략${strategyNum}] 매수: 5,000원`);
-        }
-    } else {
-        if (target[coinKey] > 0) {
-            const sellValue = Math.min(target[coinKey] * price, amount);
-            target[balKey] += sellValue; 
-            target[coinKey] -= sellValue / price; 
-            addTradeLog(coinCode, `[전략${strategyNum}] 매도: ${Math.floor(sellValue).toLocaleString()}원`);
-        }
+    if (type === 'buy' && data[balKey] >= krw) {
+        data[balKey] -= krw;
+        data[coinKey] += krw / price;
+    } else if (type === 'sell' && data[coinKey] > 0) {
+        const sellAmt = Math.min(data[coinKey] * price, krw);
+        data[balKey] += sellAmt;
+        data[coinKey] -= sellAmt / price;
     }
 }
 
-function updateUI() {
-    const target = coinData[currentSelectedCoin];
-    document.getElementById('balance-1').innerText = Math.floor(target.balance1).toLocaleString() + " 원";
-    document.getElementById('asset-1').innerText = `코인: ${target.coin1.toFixed(6)}개`;
-    document.getElementById('balance-2').innerText = Math.floor(target.balance2).toLocaleString() + " 원";
-    document.getElementById('asset-2').innerText = `코인: ${target.coin2.toFixed(6)}개`;
-    document.getElementById('trade-log').innerHTML = target.logs.join(""); 
+// --- [UI 엔진] 표 업데이트 ---
+function updateTable() {
+    const tbody = document.querySelector('#result-table tbody');
+    tbody.innerHTML = '';
+    coins.forEach(symbol => {
+        const d = coinData[symbol];
+        const row = `<tr>
+            <td class="coin-name">${coinNames[symbol]}</td>
+            <td class="strategy-1">${Math.floor(d.balance1).toLocaleString()}원</td>
+            <td>${d.coin1.toFixed(6)}</td>
+            <td class="strategy-2">${Math.floor(d.balance2).toLocaleString()}원</td>
+            <td>${d.coin2.toFixed(6)}</td>
+        </tr>`;
+        tbody.innerHTML += row;
+    });
 }
 
-function addTradeLog(coinCode, msg) {
-    const now = new Date().toLocaleTimeString();
-    const logEntry = `<div>[${now}] ${msg}</div>`;
-    coinData[coinCode].logs.unshift(logEntry); 
-}
-
-setInterval(() => updateSimulation(false), 60000);
-updateSimulation(true);
+// 가동 시작
+initCharts();
+fetchAllData();
+setInterval(fetchAllData, 60000); // 1분마다 전체 갱신
 </script>
 </body>
 </html>
