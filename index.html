@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>업비트 실시간 시뮬레이터 (PWA)</title>
-    <!-- PWA 설정을 위한 매니페스트 -->
-    <link rel="manifest" href="data:application/manifest+json,{'name':'코인시뮬','short_name':'코인시뮬','start_url':'.','display':'standalone','background_color':'#ffffff'}">
+    <title>업비트 실시간 시뮬레이터</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f5f7fa; margin: 0; padding: 10px; }
@@ -18,7 +16,7 @@
         .strategy-2 { background-color: #f9f9ff; }
         .status-label { font-size: 11px; color: #666; }
         .status-value { font-size: 15px; font-weight: bold; color: #2c3e50; }
-        #chart { width: 100%; height: 350px; margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid #eee; }
+        #chart { width: 100%; height: 400px; margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid #eee; }
         .log { font-size: 11px; height: 120px; overflow-y: auto; background: #eee; padding: 8px; margin-top: 10px; border-radius: 5px; font-family: monospace; }
         select { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid #004ea1; font-size: 16px; margin-bottom: 10px; font-weight: bold; outline: none; }
     </style>
@@ -33,8 +31,8 @@
         <option value="KRW-XRP">리플 (XRP)</option>
         <option value="KRW-DOGE">도지코인 (DOGE)</option>
     </select>
-    <div id="current-price" class="price-info">데이터 연결 중...</div>
-    <div id="last-update" style="font-size: 12px; color: #999;">로봇이 시장 상황을 분석 중입니다.</div>
+    <div id="current-price" class="price-info">시스템 가동 중...</div>
+    <div id="last-update" style="font-size: 12px; color: #999;">데이터를 기다리고 있습니다.</div>
 </div>
 
 <div class="card">
@@ -54,13 +52,12 @@
 </div>
 
 <div class="card">
-    <h2>실시간 차트 및 기록</h2>
+    <h2>실시간 차트 (Bollinger Bands)</h2>
     <div id="chart"></div>
-    <div id="trade-log" class="log">로봇 가동 준비 완료...</div>
+    <div id="trade-log" class="log">로그 기록 대기 중...</div>
 </div>
 
 <script>
-// --- [초등학생용] 각 종목별 가상 지갑 데이터예요 ---
 const coinData = {
     "KRW-BTC": { balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: [] },
     "KRW-ETH": { balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: [] },
@@ -70,46 +67,42 @@ const coinData = {
 
 let currentSelectedCoin = "KRW-BTC";
 
-// --- 차트 설정 ---
-const chartOptions = { 
-    layout: { textColor: '#333', background: { type: 'solid', color: '#ffffff' } },
-    timeScale: { timeVisible: true, secondsVisible: false },
+// --- [초등학생용] 차트와 볼린저 밴드 선들을 준비해요 ---
+const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+    layout: { textColor: '#333' },
+    timeScale: { timeVisible: true },
     grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } }
-};
-const chart = LightweightCharts.createChart(document.getElementById('chart'), chartOptions);
-const candleSeries = chart.addCandlestickSeries({
-    upColor: '#e74c3c', downColor: '#2980b9', borderVisible: false, wickUpColor: '#e74c3c', wickDownColor: '#2980b9'
 });
+const candleSeries = chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' });
+const upperSeries = chart.addLineSeries({ color: '#ff4d4d', lineWidth: 1, title: '+1.5σ' });
+const midSeries = chart.addLineSeries({ color: '#a29bfe', lineWidth: 1, lineStyle: 2, title: 'EMA' });
+const lowerSeries = chart.addLineSeries({ color: '#2ecc71', lineWidth: 1, title: '-1.5σ' });
 
-// --- [핵심 수정] 종목이 바뀌면 실행되는 마법 ---
 function changeCoin() {
-    // 1. 선택된 값 가져오기
     currentSelectedCoin = document.getElementById('coin-selector').value;
     const coinName = document.getElementById('coin-selector').options[document.getElementById('coin-selector').selectedIndex].text;
     
-    // 2. UI 즉시 갱신
     document.getElementById('strategy-title').innerText = coinName + " 시뮬레이션 결과";
     document.getElementById('current-price').innerText = "데이터 갱신 중...";
     
-    // 3. 차트 비우기 (중요!)
+    // 차트 초기화
     candleSeries.setData([]);
+    upperSeries.setData([]);
+    midSeries.setData([]);
+    lowerSeries.setData([]);
     
-    // 4. 지갑 정보 즉시 동기화
     updateUI(); 
-    
-    // 5. 즉시 데이터 불러오기
-    updateSimulation(); 
+    updateSimulation(true); // 우선 순위 모드로 실행
 }
 
-// --- 업비트 데이터 배달 ---
 async function fetchUpbitData(coin) {
     const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${coin}&count=200`;
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&t=${Date.now()}`;
 
     const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error("업비트 응답 없음");
+    const json = await response.json();
+    const rawData = JSON.parse(json.contents);
     
-    const rawData = await response.json();
     return rawData.reverse().map(item => ({
         time: Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000),
         open: item.opening_price,
@@ -119,59 +112,60 @@ async function fetchUpbitData(coin) {
     }));
 }
 
-// --- 시뮬레이터 핵심 엔진 ---
-async function updateSimulation() {
-    const coins = Object.keys(coinData);
+async function updateSimulation(priority = false) {
+    const coins = priority ? [currentSelectedCoin] : Object.keys(coinData);
     
-    // [수정] 현재 선택된 코인을 가장 먼저 처리하도록 순서 조정
-    const sortedCoins = [currentSelectedCoin, ...coins.filter(c => c !== currentSelectedCoin)];
-
-    for (const coin of sortedCoins) {
+    for (const coin of coins) {
         try {
             const candles = await fetchUpbitData(coin);
             const currentPrice = candles[candles.length - 1].close;
 
-            // [핵심 수정] 차트와 가격 텍스트는 현재 선택된 종목만 업데이트
-            if (coin === currentSelectedCoin) {
-                candleSeries.setData(candles);
-                document.getElementById('current-price').innerText = currentPrice.toLocaleString() + " 원";
-                document.getElementById('last-update').innerText = "최종 업데이트: " + new Date().toLocaleTimeString();
-            }
-
             const closes = candles.map(c => c.close);
-            
-            // --- 지표 계산 (EMA 120 및 볼린저 밴드) ---
             const ema = closes.reduce((a, b) => a + b) / closes.length;
             const std = Math.sqrt(closes.map(x => Math.pow(x - ema, 2)).reduce((a, b) => a + b) / closes.length);
 
             const bands = {
+                up: ema + std * 1.5,
+                mid: ema,
+                low: ema - std * 1.5,
                 up3: ema + std * 3,
-                up15: ema + std * 1.5,
-                down15: ema - std * 1.5,
                 down3: ema - std * 3
             };
 
-            // --- [1안/2안 전략 로직] ---
-            if (currentPrice <= bands.down15) {
+            if (coin === currentSelectedCoin) {
+                candleSeries.setData(candles);
+                upperSeries.setData(candles.map(c => ({ time: c.time, value: bands.up })));
+                midSeries.setData(candles.map(c => ({ time: c.time, value: bands.mid })));
+                lowerSeries.setData(candles.map(c => ({ time: c.time, value: bands.low })));
+                
+                document.getElementById('current-price').innerText = currentPrice.toLocaleString() + " 원";
+                document.getElementById('last-update').innerText = "최종 업데이트: " + new Date().toLocaleTimeString();
+            }
+
+            // --- 매매 로직 ---
+            if (currentPrice <= bands.low) {
                 executeTrade(coin, 1, 'buy', 5000, currentPrice);
                 if (currentPrice <= bands.down3) executeTrade(coin, 1, 'buy', 5000, currentPrice);
-            } else if (currentPrice >= bands.up15) {
+            } else if (currentPrice >= bands.up) {
                 executeTrade(coin, 1, 'sell', 5000, currentPrice);
                 if (currentPrice >= bands.up3) executeTrade(coin, 1, 'sell', 5000, currentPrice);
             }
 
-            if (currentPrice <= bands.down15) {
+            if (currentPrice <= bands.low) {
                 executeTrade(coin, 2, 'buy', 5000, currentPrice);
-            } else if (currentPrice >= bands.up15) {
+            } else if (currentPrice >= bands.up) {
                 executeTrade(coin, 2, 'sell', 5000, currentPrice);
             }
 
-            // 실시간으로 UI 갱신 (선택된 종목일 경우)
             if (coin === currentSelectedCoin) updateUI();
-
         } catch (e) {
-            console.warn(coin + " 데이터 대기 중...");
+            console.error(coin + " 데이터 오류");
         }
+    }
+    
+    // 우선 순위 처리가 끝난 후 나머지도 조용히 업데이트 (처음 켰을 때 등)
+    if (priority) {
+        setTimeout(() => updateSimulation(false), 1000);
     }
 }
 
@@ -202,7 +196,7 @@ function updateUI() {
     document.getElementById('asset-1').innerText = `코인: ${target.coin1.toFixed(6)}개`;
     document.getElementById('balance-2').innerText = Math.floor(target.balance2).toLocaleString() + " 원";
     document.getElementById('asset-2').innerText = `코인: ${target.coin2.toFixed(6)}개`;
-    document.getElementById('trade-log').innerHTML = target.logs.length > 0 ? target.logs.join("") : "매매 기록이 없습니다."; 
+    document.getElementById('trade-log').innerHTML = target.logs.join(""); 
 }
 
 function addTradeLog(coinCode, msg) {
@@ -212,10 +206,8 @@ function addTradeLog(coinCode, msg) {
     if (coinData[coinCode].logs.length > 20) coinData[coinCode].logs.pop(); 
 }
 
-// 1분마다 전체 종목 분석
-setInterval(updateSimulation, 60000);
-// 처음 시작
-updateSimulation();
+setInterval(() => updateSimulation(false), 60000);
+updateSimulation(true);
 </script>
 </body>
 </html>
