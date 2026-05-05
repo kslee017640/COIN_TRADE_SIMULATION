@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.3 (Initial Asset Boost)</title>
+    <title>통합 관제 스테이션 V4.5 (Total Asset View)</title>
+    <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
+        /* 화면을 예쁘게 꾸미는 약속들이에요 */
         :root { --main-blue: #004ea1; --up-red: #e74c3c; --down-blue: #2980b9; }
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
         .card { background: white; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
@@ -16,14 +18,17 @@
         .btn { cursor: pointer; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
         .btn-sync { background: var(--main-blue); color: white; }
         .btn-reset { background: #e67e22; color: white; margin-left: 10px; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; }
-        th, td { border: 1px solid #eee; padding: 10px; text-align: center; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; background: white; }
+        th, td { border: 1px solid #eee; padding: 12px; text-align: center; }
         th { background: #f8f9fa; color: #666; }
-        .coin-name { font-weight: bold; color: var(--main-blue); font-size: 14px; }
+        .coin-name { font-weight: bold; color: var(--main-blue); }
         .chart-container { width: 100%; height: 380px; margin-top: 10px; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; background: white; }
         .chart-title { font-size: 15px; font-weight: bold; margin-top: 20px; padding-left: 10px; border-left: 5px solid var(--main-blue); color: #333; }
-        .log-area { font-size: 11px; height: 100px; overflow-y: auto; background: #1e272e; color: #d2dae2; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; }
+        .log-area { font-size: 11px; height: 120px; overflow-y: auto; background: #1e272e; color: #d2dae2; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; }
         .status-bar { text-align: right; font-size: 11px; color: #7f8c8d; margin-bottom: 5px; }
+        .eval-price { color: #888; font-size: 11px; margin-left: 5px; }
+        /* 총 자산 숫자를 잘 보이게 강조해요 */
+        .total-asset { font-weight: bold; color: #27ae60; }
     </style>
 </head>
 <body>
@@ -37,26 +42,26 @@
                 <option value="180">180분 (3시간)</option>
                 <option value="240">240분 (4시간)</option>
                 <option value="360">360분 (6시간)</option>
-                <option value="720">720분 (12시간)</option>
             </select>
         </div>
         <div style="display: flex;">
-            <button class="btn btn-sync" onclick="manualSync()">☁️ 수동 동기화</button>
+            <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
             <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
         </div>
     </div>
 
     <div class="card">
-        <h3>📊 통합 관제 스테이션 (현금 100만 + 코인 100만 시작)</h3>
-        <div class="status-bar" id="sync-status">클라우드 연결 대기 중...</div>
+        <h3>📊 통합 실시간 잔고 (시작: 현금 100만 + 코인 100만)</h3>
+        <div class="status-bar" id="sync-status">연결 대기 중...</div>
         <table id="result-table">
             <thead>
                 <tr>
                     <th>종목</th>
-                    <th>전략 1안 잔고</th>
-                    <th>전략 1안 코인</th>
-                    <th>전략 2안 잔고</th>
-                    <th>전략 2안 코인</th>
+                    <th>현재가</th>
+                    <th>보유 현금</th>
+                    <th>보유 코인 (평가금액)</th>
+                    <!-- 표의 맨 오른쪽에 한 칸을 더 만들었어요! -->
+                    <th>총 자산 (현금+코인)</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -66,54 +71,57 @@
     <div id="charts-area"></div>
 
 <script>
+// 구글 시트 주소예요
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzk3RlYiDQtn0_iyDwHIpAGYoVOM3YY8ELyJ-GXCvhtAzDWF2QOM-uBnBNRkln_RjLjSw/exec";
+// 우리가 감시하는 코인들이에요
 const coins = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-DOGE"];
 const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XRP": "리플", "KRW-DOGE": "도지코인"};
 let coinData = {};
 let chartObjects = {};
 let emaWindow = 120;
 
+// 컴퓨터에 저장된 내 돈 정보를 불러와요
 function initData() {
-    const saved = localStorage.getItem('crypto_sim_v4');
+    const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
         coinData = JSON.parse(saved); 
     } else { 
         coins.forEach(s => {
             coinData[s] = {
-                balance1: 1000000, coin1: 0, 
-                balance2: 1000000, coin2: 0, 
+                balance: 1000000, 
+                coin: 0, 
+                lastPrice: 0,
                 logs: [],
-                isNewAccount: true // 첫 시세 확인 시 코인을 자동으로 사기 위한 플래그
+                isNewAccount: true 
             };
         });
     }
 }
 
+// 처음부터 다시 시작하고 싶을 때 눌러요
 function resetData() {
-    if(confirm("모든 데이터를 초기화하고 현금 100만 + 코인 100만으로 다시 시작할까요?")) {
-        localStorage.removeItem('crypto_sim_v4');
+    if(confirm("모든 데이터를 초기화하고 다시 시작할까요?")) {
+        localStorage.removeItem('crypto_sim_v4_4');
         location.reload();
     }
 }
 
+// 내 데이터를 구글에 안전하게 보내요
 async function cloudSync() {
     try {
         await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'sync', data: coinData }) });
-        const now = new Date();
-        document.getElementById('sync-status').innerText = `✅ 동기화 완료 (${now.toLocaleTimeString()}) | 1시간 간격 자동 저장 중`;
-    } catch (e) {
-        document.getElementById('sync-status').innerText = "⚠️ 클라우드 동기화 실패";
-    }
+        document.getElementById('sync-status').innerText = `✅ 동기화 완료 (${new Date().toLocaleTimeString()})`;
+    } catch (e) { document.getElementById('sync-status').innerText = "⚠️ 동기화 실패"; }
 }
 
-function manualSync() { cloudSync(); alert("현재 시뮬레이션 데이터를 구글 시트로 전송했습니다."); }
+function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
+// 화면에 그래프를 그릴 준비를 해요
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
         const title = document.createElement('div');
         title.className = 'chart-title';
-        title.id = `title-${symbol}`;
         title.innerText = `📈 ${coinNames[symbol]} (${symbol})`;
         const container = document.createElement('div');
         container.className = 'chart-container';
@@ -126,30 +134,28 @@ function initCharts() {
 
         const chart = LightweightCharts.createChart(container, {
             layout: { textColor: '#333' },
-            timeScale: { timeVisible: true },
             grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } }
         });
         chartObjects[symbol] = {
             chart: chart,
             candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
-            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }), // 녹색
-            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1 }), // 연두색
-            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }), // 노란색
-            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1 }), // 주황색
-            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1 }) // 빨간색
+            up3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1, lineStyle: 2 }),
+            up15: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }),
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }),
+            down15: chart.addLineSeries({ color: '#2980b9', lineWidth: 1 })
         };
     });
 }
 
+// 평균 가격을 계산하는 수학 공식이에요
 function calculateEMA(data, window) {
     const k = 2 / (window + 1);
     let emaArray = [data[0]];
-    for (let i = 1; i < data.length; i++) {
-        emaArray.push(data[i] * k + emaArray[i - 1] * (1 - k));
-    }
+    for (let i = 1; i < data.length; i++) emaArray.push(data[i] * k + emaArray[i - 1] * (1 - k));
     return emaArray;
 }
 
+// 가격이 얼마나 변하는지 계산하는 공식이에요
 function calculateRollingStd(data, window, emaData) {
     let stdArray = [];
     for (let i = 0; i < data.length; i++) {
@@ -167,6 +173,7 @@ function changeParameters() {
     runCycle();
 }
 
+// 1분마다 업비트에서 가격을 가져와서 사고팔지 결정해요
 async function runCycle() {
     for (const symbol of coins) {
         try {
@@ -190,82 +197,90 @@ async function runCycle() {
             obj.up15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
             obj.mid.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] })));
             obj.down15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
-            obj.down3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 })));
 
             const curPrice = rawData[rawData.length - 1].close;
             const target = coinData[symbol];
+            target.lastPrice = curPrice;
 
-            // [핵심] 신규 계좌일 경우 100만원어치 즉시 보유 처리
             if (target.isNewAccount) {
-                target.coin1 = 1000000 / curPrice;
-                target.coin2 = 1000000 / curPrice;
-                addLog(symbol, `🚀 시뮬레이션 시작: 100만 원어치 코인 보유 완료`);
+                target.coin = 1000000 / curPrice;
+                addLog(symbol, `🚀 시뮬레이션 시작: 100만 원어치 코인 초기 보유 완료`);
                 delete target.isNewAccount;
             }
 
             const lastIdx = emaValues.length - 1;
-            const b = { 
-                up3: emaValues[lastIdx] + stdValues[lastIdx]*3, 
-                up15: emaValues[lastIdx] + stdValues[lastIdx]*1.5, 
-                down15: emaValues[lastIdx] - stdValues[lastIdx]*1.5, 
-                down3: emaValues[lastIdx] - stdValues[lastIdx]*3 
-            };
+            const mid = emaValues[lastIdx];
+            const std = stdValues[lastIdx];
+            const up3 = mid + std * 3;
+            const up15 = mid + std * 1.5;
+            const down15 = mid - std * 1.5;
 
-            if (curPrice <= b.down15) {
-                execute(symbol, 1, 'buy', 5000, curPrice);
-                if (curPrice <= b.down3) execute(symbol, 1, 'buy', 5000, curPrice);
-            } else if (curPrice >= b.up15) {
-                execute(symbol, 1, 'sell', 5000, curPrice);
-                if (curPrice >= b.up3) execute(symbol, 1, 'sell', 5000, curPrice);
+            // 정해진 규칙에 따라 사고팔아요
+            if (curPrice > up3) {
+                execute(symbol, 'sell', 10000, curPrice);
+            } else if (curPrice > up15) {
+                execute(symbol, 'sell', 5000, curPrice);
+            } else if (curPrice <= down15) {
+                execute(symbol, 'buy', 10000, curPrice);
+            } else if (curPrice <= mid) {
+                execute(symbol, 'buy', 5000, curPrice);
             }
-            if (curPrice <= b.down15) execute(symbol, 2, 'buy', 5000, curPrice);
-            else if (curPrice >= b.up15) execute(symbol, 2, 'sell', 5000, curPrice);
 
         } catch (e) { console.warn(symbol + " 업데이트 중..."); }
     }
     updateUI();
-    localStorage.setItem('crypto_sim_v4', JSON.stringify(coinData));
+    localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
-function execute(symbol, strategyNum, type, krw, price) {
+// 진짜로 코인을 사거나 파는 계산을 하는 곳이에요
+function execute(symbol, type, krw, price) {
     const data = coinData[symbol];
-    const balKey = strategyNum === 1 ? 'balance1' : 'balance2';
-    const coinKey = strategyNum === 1 ? 'coin1' : 'coin2';
-    if (type === 'buy' && data[balKey] >= krw) {
-        data[balKey] -= krw; data[coinKey] += krw / price;
-        addLog(symbol, `[전략${strategyNum}] 매수: ${krw}원`);
-    } else if (type === 'sell' && data[coinKey] > 0) {
-        const sellAmt = Math.min(data[coinKey] * price, krw);
-        data[balKey] += sellAmt; data[coinKey] -= sellAmt / price;
-        addLog(symbol, `[전략${strategyNum}] 매도: ${Math.floor(sellAmt)}원`);
+    if (type === 'buy' && data.balance >= krw) {
+        data.balance -= krw; data.coin += krw / price;
+        addLog(symbol, `🟢 매수: ${krw.toLocaleString()}원 (가격: ${price.toLocaleString()})`);
+    } else if (type === 'sell' && data.coin > 0) {
+        const sellAmt = Math.min(data.coin * price, krw);
+        data.balance += sellAmt; data.coin -= sellAmt / price;
+        addLog(symbol, `🔴 매도: ${Math.floor(sellAmt).toLocaleString()}원 (가격: ${price.toLocaleString()})`);
     }
 }
 
+// 어떤 일이 있었는지 기록을 남겨요
 function addLog(symbol, msg) {
     const time = new Date().toLocaleTimeString();
     coinData[symbol].logs.unshift(`[${time}] ${msg}`);
     if (coinData[symbol].logs.length > 20) coinData[symbol].logs.pop();
 }
 
+// 화면에 보이는 숫자들을 최신 정보로 바꿔줘요
 function updateUI() {
     const tbody = document.querySelector('#result-table tbody');
     tbody.innerHTML = '';
     coins.forEach(symbol => {
         const d = coinData[symbol];
-        tbody.innerHTML += `<tr><td class="coin-name">${coinNames[symbol]}</td>
-            <td>${Math.floor(d.balance1).toLocaleString()}원</td><td>${d.coin1.toFixed(6)}</td>
-            <td>${Math.floor(d.balance2).toLocaleString()}원</td><td>${d.coin2.toFixed(6)}</td></tr>`;
+        const evalPrice = Math.floor(d.coin * d.lastPrice); // 지금 내 코인이 얼마인지 계산해요
+        const totalAsset = Math.floor(d.balance + evalPrice); // 현금이랑 코인 평가금을 더해요!
+
+        tbody.innerHTML += `<tr>
+            <td class="coin-name">${coinNames[symbol]}</td>
+            <td>${d.lastPrice.toLocaleString()}원</td>
+            <td>${Math.floor(d.balance).toLocaleString()}원</td>
+            <td>${d.coin.toFixed(6)} <span class="eval-price">(${evalPrice.toLocaleString()}원)</span></td>
+            <!-- 표의 맨 우측에 총 자산을 보여줘요 -->
+            <td class="total-asset">${totalAsset.toLocaleString()}원</td>
+        </tr>`;
         document.getElementById(`log-${symbol}`).innerHTML = d.logs.join('<br>');
     });
 }
 
-setInterval(runCycle, 60000); // 1분 모니터링
-setInterval(cloudSync, 3600000); // 1시간 동기화
+// 자동으로 일을 시키는 타이머예요
+setInterval(runCycle, 60000); 
+setInterval(cloudSync, 3600000); 
 
+// 처음 시작할 때 하는 일들이에요
 initData();
 initCharts();
 runCycle();
-cloudSync();
 </script>
 </body>
 </html>
