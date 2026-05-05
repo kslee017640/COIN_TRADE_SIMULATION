@@ -18,7 +18,7 @@
         .status-value { font-size: 15px; font-weight: bold; color: #2c3e50; }
         #chart { width: 100%; height: 400px; margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid #eee; }
         .log { font-size: 11px; height: 120px; overflow-y: auto; background: #eee; padding: 8px; margin-top: 10px; border-radius: 5px; font-family: monospace; }
-        select { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid #004ea1; font-size: 16px; margin-bottom: 10px; font-weight: bold; outline: none; }
+        select { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid #004ea1; font-size: 16px; margin-bottom: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -31,8 +31,8 @@
         <option value="KRW-XRP">리플 (XRP)</option>
         <option value="KRW-DOGE">도지코인 (DOGE)</option>
     </select>
-    <div id="current-price" class="price-info">시스템 가동 중...</div>
-    <div id="last-update" style="font-size: 12px; color: #999;">데이터를 기다리고 있습니다.</div>
+    <div id="current-price" class="price-info">데이터 연결 중...</div>
+    <div id="last-update" style="font-size: 12px; color: #999;">분석 로봇 가동 중</div>
 </div>
 
 <div class="card">
@@ -52,9 +52,9 @@
 </div>
 
 <div class="card">
-    <h2>실시간 차트 (Bollinger Bands)</h2>
+    <h2>실시간 곡선 차트 (EMA 120 볼린저 밴드)</h2>
     <div id="chart"></div>
-    <div id="trade-log" class="log">로그 기록 대기 중...</div>
+    <div id="trade-log" class="log">데이터 로딩 중...</div>
 </div>
 
 <script>
@@ -67,38 +67,58 @@ const coinData = {
 
 let currentSelectedCoin = "KRW-BTC";
 
-// --- [초등학생용] 차트와 볼린저 밴드 선들을 준비해요 ---
 const chart = LightweightCharts.createChart(document.getElementById('chart'), {
     layout: { textColor: '#333' },
     timeScale: { timeVisible: true },
     grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } }
 });
 const candleSeries = chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' });
-const upperSeries = chart.addLineSeries({ color: '#ff4d4d', lineWidth: 1, title: '+1.5σ' });
-const midSeries = chart.addLineSeries({ color: '#a29bfe', lineWidth: 1, lineStyle: 2, title: 'EMA' });
-const lowerSeries = chart.addLineSeries({ color: '#2ecc71', lineWidth: 1, title: '-1.5σ' });
+const upperSeries = chart.addLineSeries({ color: '#ff4d4d', lineWidth: 1 });
+const midSeries = chart.addLineSeries({ color: '#a29bfe', lineWidth: 1, lineStyle: 2 });
+const lowerSeries = chart.addLineSeries({ color: '#2ecc71', lineWidth: 1 });
 
 function changeCoin() {
     currentSelectedCoin = document.getElementById('coin-selector').value;
     const coinName = document.getElementById('coin-selector').options[document.getElementById('coin-selector').selectedIndex].text;
-    
     document.getElementById('strategy-title').innerText = coinName + " 시뮬레이션 결과";
-    document.getElementById('current-price').innerText = "데이터 갱신 중...";
-    
-    // 차트 초기화
     candleSeries.setData([]);
     upperSeries.setData([]);
     midSeries.setData([]);
     lowerSeries.setData([]);
-    
     updateUI(); 
-    updateSimulation(true); // 우선 순위 모드로 실행
+    updateSimulation(true); 
+}
+
+// --- [엔지니어링] EMA 계산 함수 (MATLAB 스타일의 깔끔한 구현) ---
+function calculateEMA(data, window) {
+    const k = 2 / (window + 1);
+    let emaArray = [data[0]];
+    for (let i = 1; i < data.length; i++) {
+        emaArray.push(data[i] * k + emaArray[i - 1] * (1 - k));
+    }
+    return emaArray;
+}
+
+// --- [엔지니어링] 롤링 표준편차 계산 함수 ---
+function calculateRollingStd(data, window, emaData) {
+    let stdArray = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < 1) {
+            stdArray.push(0);
+            continue;
+        }
+        const start = Math.max(0, i - window + 1);
+        const subset = data.slice(start, i + 1);
+        const mean = emaData[i];
+        const variance = subset.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / subset.length;
+        stdArray.push(Math.sqrt(variance));
+    }
+    return stdArray;
 }
 
 async function fetchUpbitData(coin) {
     const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${coin}&count=200`;
     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&t=${Date.now()}`;
-
     const response = await fetch(proxyUrl);
     const json = await response.json();
     const rawData = JSON.parse(json.contents);
@@ -118,31 +138,36 @@ async function updateSimulation(priority = false) {
     for (const coin of coins) {
         try {
             const candles = await fetchUpbitData(coin);
-            const currentPrice = candles[candles.length - 1].close;
-
             const closes = candles.map(c => c.close);
-            const ema = closes.reduce((a, b) => a + b) / closes.length;
-            const std = Math.sqrt(closes.map(x => Math.pow(x - ema, 2)).reduce((a, b) => a + b) / closes.length);
+            
+            // [핵심] EMA 120 및 곡선형 밴드 계산
+            const emaValues = calculateEMA(closes, 120);
+            const stdValues = calculateRollingStd(closes, 120, emaValues);
+
+            const lastIdx = candles.length - 1;
+            const currentPrice = candles[lastIdx].close;
+            const currentEMA = emaValues[lastIdx];
+            const currentStd = stdValues[lastIdx];
 
             const bands = {
-                up: ema + std * 1.5,
-                mid: ema,
-                low: ema - std * 1.5,
-                up3: ema + std * 3,
-                down3: ema - std * 3
+                up: currentEMA + currentStd * 1.5,
+                mid: currentEMA,
+                low: currentEMA - currentStd * 1.5,
+                up3: currentEMA + currentStd * 3,
+                down3: currentEMA - currentStd * 3
             };
 
             if (coin === currentSelectedCoin) {
                 candleSeries.setData(candles);
-                upperSeries.setData(candles.map(c => ({ time: c.time, value: bands.up })));
-                midSeries.setData(candles.map(c => ({ time: c.time, value: bands.mid })));
-                lowerSeries.setData(candles.map(c => ({ time: c.time, value: bands.low })));
+                upperSeries.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
+                midSeries.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] })));
+                lowerSeries.setData(candles.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
                 
                 document.getElementById('current-price').innerText = currentPrice.toLocaleString() + " 원";
                 document.getElementById('last-update').innerText = "최종 업데이트: " + new Date().toLocaleTimeString();
             }
 
-            // --- 매매 로직 ---
+            // --- 매매 로직 (동적 밴드 기준) ---
             if (currentPrice <= bands.low) {
                 executeTrade(coin, 1, 'buy', 5000, currentPrice);
                 if (currentPrice <= bands.down3) executeTrade(coin, 1, 'buy', 5000, currentPrice);
@@ -159,13 +184,8 @@ async function updateSimulation(priority = false) {
 
             if (coin === currentSelectedCoin) updateUI();
         } catch (e) {
-            console.error(coin + " 데이터 오류");
+            console.warn(coin + " 데이터 대기 중...");
         }
-    }
-    
-    // 우선 순위 처리가 끝난 후 나머지도 조용히 업데이트 (처음 켰을 때 등)
-    if (priority) {
-        setTimeout(() => updateSimulation(false), 1000);
     }
 }
 
@@ -203,7 +223,6 @@ function addTradeLog(coinCode, msg) {
     const now = new Date().toLocaleTimeString();
     const logEntry = `<div>[${now}] ${msg}</div>`;
     coinData[coinCode].logs.unshift(logEntry); 
-    if (coinData[coinCode].logs.length > 20) coinData[coinCode].logs.pop(); 
 }
 
 setInterval(() => updateSimulation(false), 60000);
