@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.2 (Hourly Sync)</title>
+    <title>통합 관제 스테이션 V4.3 (Initial Asset Boost)</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root { --main-blue: #004ea1; --up-red: #e74c3c; --down-blue: #2980b9; }
@@ -47,7 +47,7 @@
     </div>
 
     <div class="card">
-        <h3>📊 4대 종목 통합 성과 (1시간 자동 동기화 모드)</h3>
+        <h3>📊 통합 관제 스테이션 (현금 100만 + 코인 100만 시작)</h3>
         <div class="status-bar" id="sync-status">클라우드 연결 대기 중...</div>
         <table id="result-table">
             <thead>
@@ -75,39 +75,39 @@ let emaWindow = 120;
 
 function initData() {
     const saved = localStorage.getItem('crypto_sim_v4');
-    if (saved) { coinData = JSON.parse(saved); } 
-    else { coins.forEach(s => coinData[s] = {balance1: 1000000, coin1: 0, balance2: 1000000, coin2: 0, logs: []}); }
+    if (saved) { 
+        coinData = JSON.parse(saved); 
+    } else { 
+        coins.forEach(s => {
+            coinData[s] = {
+                balance1: 1000000, coin1: 0, 
+                balance2: 1000000, coin2: 0, 
+                logs: [],
+                isNewAccount: true // 첫 시세 확인 시 코인을 자동으로 사기 위한 플래그
+            };
+        });
+    }
 }
 
 function resetData() {
-    if(confirm("모든 데이터를 초기화할까요?")) {
+    if(confirm("모든 데이터를 초기화하고 현금 100만 + 코인 100만으로 다시 시작할까요?")) {
         localStorage.removeItem('crypto_sim_v4');
         location.reload();
     }
 }
 
-// --- [클라우드 연동] ---
 async function cloudSync() {
     try {
-        await fetch(GAS_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify({ action: 'sync', data: coinData })
-        });
+        await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'sync', data: coinData }) });
         const now = new Date();
-        const nextSync = new Date(now.getTime() + 3600000).toLocaleTimeString();
-        document.getElementById('sync-status').innerText = `✅ 동기화 완료 (${now.toLocaleTimeString()}) | 다음 자동 동기화: ${nextSync}`;
+        document.getElementById('sync-status').innerText = `✅ 동기화 완료 (${now.toLocaleTimeString()}) | 1시간 간격 자동 저장 중`;
     } catch (e) {
         document.getElementById('sync-status').innerText = "⚠️ 클라우드 동기화 실패";
     }
 }
 
-function manualSync() {
-    cloudSync();
-    alert("현재 시뮬레이션 데이터를 구글 드라이브로 전송했습니다.");
-}
+function manualSync() { cloudSync(); alert("현재 시뮬레이션 데이터를 구글 시트로 전송했습니다."); }
 
-// --- [차트 및 엔진] ---
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -132,11 +132,11 @@ function initCharts() {
         chartObjects[symbol] = {
             chart: chart,
             candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
-            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }),
-            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1 }),
-            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }),
-            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1 }),
-            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1 })
+            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }), // 녹색
+            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1 }), // 연두색
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }), // 노란색
+            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1 }), // 주황색
+            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1 }) // 빨간색
         };
     });
 }
@@ -193,8 +193,23 @@ async function runCycle() {
             obj.down3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 })));
 
             const curPrice = rawData[rawData.length - 1].close;
+            const target = coinData[symbol];
+
+            // [핵심] 신규 계좌일 경우 100만원어치 즉시 보유 처리
+            if (target.isNewAccount) {
+                target.coin1 = 1000000 / curPrice;
+                target.coin2 = 1000000 / curPrice;
+                addLog(symbol, `🚀 시뮬레이션 시작: 100만 원어치 코인 보유 완료`);
+                delete target.isNewAccount;
+            }
+
             const lastIdx = emaValues.length - 1;
-            const b = { up3: emaValues[lastIdx] + stdValues[lastIdx]*3, up15: emaValues[lastIdx] + stdValues[lastIdx]*1.5, down15: emaValues[lastIdx] - stdValues[lastIdx]*1.5, down3: emaValues[lastIdx] - stdValues[lastIdx]*3 };
+            const b = { 
+                up3: emaValues[lastIdx] + stdValues[lastIdx]*3, 
+                up15: emaValues[lastIdx] + stdValues[lastIdx]*1.5, 
+                down15: emaValues[lastIdx] - stdValues[lastIdx]*1.5, 
+                down3: emaValues[lastIdx] - stdValues[lastIdx]*3 
+            };
 
             if (curPrice <= b.down15) {
                 execute(symbol, 1, 'buy', 5000, curPrice);
@@ -244,14 +259,13 @@ function updateUI() {
     });
 }
 
-// --- [주기 설정] ---
-setInterval(runCycle, 60000); // 1분마다 매매 판단
-setInterval(cloudSync, 3600000); // 1시간(3,600,000ms)마다 클라우드 저장
+setInterval(runCycle, 60000); // 1분 모니터링
+setInterval(cloudSync, 3600000); // 1시간 동기화
 
 initData();
 initCharts();
 runCycle();
-cloudSync(); // 시작할 때 한 번 저장
+cloudSync();
 </script>
 </body>
 </html>
