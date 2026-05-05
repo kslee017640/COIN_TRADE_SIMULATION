@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.8 (Chart Fix & Star Markers)</title>
+    <title>통합 관제 스테이션 V4.9 (Accurate Bollinger Bands)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -96,12 +96,11 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// 데이터 초기화: 매매 위치를 기억할 markers 배열을 추가했어요!
+// 데이터 초기화
 function initData() {
     const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
         coinData = JSON.parse(saved); 
-        // 기존 데이터에 markers가 없으면 새로 만들어줘요
         coins.forEach(s => { if(!coinData[s].markers) coinData[s].markers = []; });
     } else { 
         coins.forEach(s => {
@@ -110,7 +109,7 @@ function initData() {
                 coin: 0, 
                 lastPrice: 0,
                 logs: [],
-                markers: [], // 매매 시점 별표를 저장하는 곳이에요
+                markers: [], 
                 isNewAccount: true 
             };
         });
@@ -133,6 +132,7 @@ async function cloudSync() {
 
 function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
+// 화면에 멋진 코인 그래프 그림판을 만드는 함수예요
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -153,13 +153,16 @@ function initCharts() {
             grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } },
             timeScale: { timeVisible: true, secondsVisible: false }
         });
+        
+        // [수정된 부분] 밴드의 선 색상과 굵기를 요청하신 대로 정확히 맞췄어요!
         chartObjects[symbol] = {
             chart: chart,
             candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
-            up3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1, lineStyle: 2 }),
-            up15: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }),
-            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }),
-            down15: chart.addLineSeries({ color: '#2980b9', lineWidth: 1 })
+            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 2 }), // +3.0 표준편차 (굵은 녹색)
+            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 2 }), // +1.5 표준편차 (굵은 연두색)
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 2 }), // 기간 설정 값 (노란색 실선)
+            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 2 }), // -1.5 표준편차 (굵은 주황색)
+            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 2 })  // -3.0 표준편차 (굵은 붉은색) - 추가됨!
         };
     });
 }
@@ -197,7 +200,6 @@ async function runCycle() {
             const response = await fetch(proxyUrl);
             const json = await response.json();
             
-            // 데이터가 제대로 왔는지 확인해요
             if (!json || !json.contents) throw new Error("데이터 응답 없음");
             
             const rawData = JSON.parse(json.contents).reverse().map(item => ({
@@ -213,23 +215,24 @@ async function runCycle() {
             const obj = chartObjects[symbol];
             const target = coinData[symbol];
             
-            // 차트에 캔들과 선들을 그려요
+            // [수정된 부분] 5개의 선 모두에 계산된 데이터를 넣어줘서 차트에 완벽하게 그려지게 해요!
             obj.candle.setData(rawData);
             obj.up3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 3 })));
             obj.up15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
             obj.mid.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] })));
             obj.down15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
+            obj.down3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 }))); // 누락되었던 -3.0 데이터 연결 완료!
 
-            // [추가] 매매 별표를 차트 위에 뿌려줘요
+            // 매매 별표를 차트 위에 뿌려줘요
             obj.candle.setMarkers(target.markers || []);
             
-            // [추가] 차트가 텅 비어 보이지 않게 데이터를 화면에 꽉 채워줘요
+            // 차트가 텅 비어 보이지 않게 데이터를 화면에 꽉 채워줘요
             obj.chart.timeScale().fitContent();
 
             const curPrice = rawData[rawData.length - 1].close;
-            const curTime = rawData[rawData.length - 1].time; // 현재 캔들의 시간이에요
+            const curTime = rawData[rawData.length - 1].time; 
             target.lastPrice = curPrice;
-            target.lastTime = curTime; // 매매 시점 기록을 위해 저장해요
+            target.lastTime = curTime; 
 
             if (target.isNewAccount) {
                 target.coin = 1000000 / curPrice;
@@ -243,17 +246,20 @@ async function runCycle() {
             const up3 = mid + std * 3;
             const up15 = mid + std * 1.5;
             const down15 = mid - std * 1.5;
+            // down3(하단 붉은선) 변수도 시각화용으로 사용할 수 있게 준비 완료
+            const down3 = mid - std * 3; 
 
-            // 매매 판단 로직 (V4.7과 동일해요)
-            if (curPrice > up3) {
-                execute(symbol, 'sell', 10000, curPrice);
-            } else if (curPrice > up15) {
-                execute(symbol, 'sell', 5000, curPrice);
+            // 확인해주신 매매 조건과 완벽하게 일치하는 로직입니다.
+            if (curPrice >= up3) {
+                execute(symbol, 'sell', 10000, curPrice); // 굵은 녹색 이상: 2단위 팔기
+            } else if (curPrice >= up15) {
+                execute(symbol, 'sell', 5000, curPrice);  // 연두색 ~ 녹색 사이: 1단위 팔기
             } else if (curPrice <= down15) {
-                execute(symbol, 'buy', 10000, curPrice);
+                execute(symbol, 'buy', 10000, curPrice);  // 굵은 주황색 이하: 2단위 사기
             } else if (curPrice <= mid) {
-                execute(symbol, 'buy', 5000, curPrice);
+                execute(symbol, 'buy', 5000, curPrice);   // 노란 실선 ~ 주황색 사이: 1단위 사기
             }
+            // 0 ~ +1.5 구간(노란 실선 초과 ~ 연두색 미만)은 위 조건들에 걸리지 않으므로 '관망'하게 됩니다.
 
         } catch (e) { console.error(symbol + " 오류:", e); }
     }
@@ -268,7 +274,6 @@ function execute(symbol, type, krw, price) {
         data.balance -= krw; data.coin += krw / price;
         addLog(symbol, `🟢 매수: ${krw.toLocaleString()}원 (가격: ${price.toLocaleString()})`);
         
-        // [추가] 매수 별표(초록색)를 기록해요
         data.markers.push({
             time: data.lastTime,
             position: 'belowBar',
@@ -281,7 +286,6 @@ function execute(symbol, type, krw, price) {
         data.balance += sellAmt; data.coin -= sellAmt / price;
         addLog(symbol, `🔴 매도: ${Math.floor(sellAmt).toLocaleString()}원 (가격: ${price.toLocaleString()})`);
         
-        // [추가] 매도 별표(빨간색)를 기록해요
         data.markers.push({
             time: data.lastTime,
             position: 'aboveBar',
@@ -323,7 +327,7 @@ setInterval(cloudSync, 3600000);
 
 initData();
 initCharts();
-runCycle(); // 페이지 열자마자 한 번 실행!
+runCycle(); 
 requestWakeLock();
 </script>
 </body>
