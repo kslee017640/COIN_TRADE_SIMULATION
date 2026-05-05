@@ -3,36 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>코인 통합 시뮬레이션 관제소</title>
+    <title>코인 통합 시뮬레이션 관제소 V3.5</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
         .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        h1 { font-size: 20px; text-align: center; color: #333; margin-bottom: 20px; }
+        .header-box { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { font-size: 20px; color: #333; margin: 0; }
         
-        /* 시뮬레이션 결과 표 스타일 */
+        /* 버튼 스타일 */
+        .reset-btn { background-color: #ff4d4d; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .reset-btn:hover { background-color: #cc0000; }
+
+        /* 결과 표 스타일 */
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
         th { background-color: #f8f9fa; color: #555; }
         .coin-name { font-weight: bold; color: #004ea1; }
-        .strategy-1 { color: #e74c3c; }
-        .strategy-2 { color: #2980b9; }
 
         /* 차트 구역 스타일 */
         .chart-container { width: 100%; height: 350px; margin-top: 10px; border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
         .chart-title { font-size: 16px; font-weight: bold; margin-top: 10px; color: #444; border-left: 4px solid #004ea1; padding-left: 10px; }
-        
         .update-time { text-align: right; font-size: 12px; color: #999; margin-bottom: 10px; }
+        
+        .log-area { font-size: 11px; height: 100px; overflow-y: auto; background: #2c3e50; color: #ecf0f1; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; }
     </style>
 </head>
 <body>
 
-    <h1>🚀 4대 종목 전략 통합 시뮬레이션</h1>
-    <div id="last-update" class="update-time">데이터 연결 중...</div>
+    <div class="header-box">
+        <h1>🚀 통합 전략 관제소 (Data Persistence)</h1>
+        <button class="reset-btn" onclick="resetAllData()">데이터 초기화</button>
+    </div>
+    
+    <div id="last-update" class="update-time">데이터 동기화 중...</div>
 
-    <!-- 시뮬레이션 결과 표 -->
     <div class="card">
-        <h2>📊 전략별 성과 비교 (초기자산 종목당 100만원)</h2>
+        <h2>📊 실시간 전략 성과 (자동 저장됨)</h2>
         <table id="result-table">
             <thead>
                 <tr>
@@ -43,34 +50,50 @@
                     <th>전략 2안 코인</th>
                 </tr>
             </thead>
-            <tbody>
-                <!-- 자바스크립트가 내용을 채웁니다 -->
-            </tbody>
+            <tbody></tbody>
         </table>
     </div>
 
-    <!-- 차트 구역 -->
-    <div id="charts-area">
-        <!-- BTC, ETH, XRP, DOGE 차트가 순서대로 생성됩니다 -->
-    </div>
+    <div id="charts-area"></div>
 
 <script>
-// --- [기억 장치] 4개 종목 데이터 통합 관리 ---
 const coins = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-DOGE"];
 const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XRP": "리플", "KRW-DOGE": "도지코인"};
-const coinData = {};
+let coinData = {};
 const chartObjects = {};
 
-// 초기 데이터 세팅
-coins.forEach(symbol => {
-    coinData[symbol] = {
-        balance1: 1000000, coin1: 0,
-        balance2: 1000000, coin2: 0,
-        logs: []
-    };
-});
+// --- [저장소 로직] 데이터를 브라우저에 저장하고 불러옵니다 ---
+function saveToLocal() {
+    localStorage.setItem('crypto_sim_data', JSON.stringify(coinData));
+}
 
-// --- [엔지니어링] 차트 엔진 초기화 ---
+function loadFromLocal() {
+    const saved = localStorage.getItem('crypto_sim_data');
+    if (saved) {
+        coinData = JSON.parse(saved);
+    } else {
+        initNewData();
+    }
+}
+
+function initNewData() {
+    coins.forEach(symbol => {
+        coinData[symbol] = {
+            balance1: 1000000, coin1: 0,
+            balance2: 1000000, coin2: 0,
+            logs: []
+        };
+    });
+}
+
+function resetAllData() {
+    if (confirm("모든 시뮬레이션 기록을 삭제하고 100만원으로 다시 시작할까요?")) {
+        localStorage.removeItem('crypto_sim_data');
+        location.reload();
+    }
+}
+
+// --- [차트 엔진] V3.0의 규격과 색상을 계승합니다 ---
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -82,8 +105,13 @@ function initCharts() {
         container.id = `chart-${symbol}`;
         container.className = 'chart-container';
         
+        const logArea = document.createElement('div');
+        logArea.id = `log-${symbol}`;
+        logArea.className = 'log-area';
+        
         area.appendChild(title);
         area.appendChild(container);
+        area.appendChild(logArea);
 
         const chart = LightweightCharts.createChart(container, {
             layout: { textColor: '#333' },
@@ -94,16 +122,16 @@ function initCharts() {
         chartObjects[symbol] = {
             chart: chart,
             candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
-            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1, title: '+3.0σ' }), // 녹색
-            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1, title: '+1.5σ' }), // 연두색
-            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2, title: 'EMA' }), // 노란색
-            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1, title: '-1.5σ' }), // 주황색
-            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1, title: '-3.0σ' }) // 빨간색
+            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 1 }), // 녹색
+            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 1 }), // 연두색
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 1, lineStyle: 2 }), // 노란색
+            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 1 }), // 주황색
+            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 1 }) // 빨간색
         };
     });
 }
 
-// --- [계산 엔진] EMA 및 곡선 밴드 산출 ---
+// --- [계산 엔진] EMA 및 롤링 표준편차 ---
 function calculateEMA(data, window) {
     const k = 2 / (window + 1);
     let emaArray = [data[0]];
@@ -125,8 +153,8 @@ function calculateRollingStd(data, window, emaData) {
     return stdArray;
 }
 
-// --- [배달 엔진] 업비트 데이터 수신 ---
-async function fetchAllData() {
+// --- [메인 엔진] 데이터 수신 및 시뮬레이션 ---
+async function runCycle() {
     for (const symbol of coins) {
         try {
             const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
@@ -140,14 +168,14 @@ async function fetchAllData() {
 
             processSimulation(symbol, rawData);
         } catch (e) {
-            console.error(symbol + " 수신 에러");
+            console.warn(symbol + " 연결 시도 중...");
         }
     }
-    updateTable();
+    updateUI();
+    saveToLocal(); // 주기적으로 저장
     document.getElementById('last-update').innerText = "최종 업데이트: " + new Date().toLocaleTimeString();
 }
 
-// --- [전략 엔진] 실시간 매매 시뮬레이션 ---
 function processSimulation(symbol, candles) {
     const closes = candles.map(c => c.close);
     const emaValues = calculateEMA(closes, 120);
@@ -166,14 +194,12 @@ function processSimulation(symbol, candles) {
     const curStd = stdValues[stdValues.length - 1];
     
     const bands = {
-        up3: curEMA + curStd * 3,
-        up15: curEMA + curStd * 1.5,
-        down15: curEMA - curStd * 1.5,
-        down3: curEMA - curStd * 3
+        up3: curEMA + curStd * 3, up15: curEMA + curStd * 1.5,
+        down15: curEMA - curStd * 1.5, down3: curEMA - curStd * 3
     };
 
     const target = coinData[symbol];
-    // 전략 1안: 분할 매수/매도
+    // 전략 1안
     if (curPrice <= bands.down15) {
         execute(symbol, 1, 'buy', 5000, curPrice);
         if (curPrice <= bands.down3) execute(symbol, 1, 'buy', 5000, curPrice);
@@ -181,8 +207,7 @@ function processSimulation(symbol, candles) {
         execute(symbol, 1, 'sell', 5000, curPrice);
         if (curPrice >= bands.up3) execute(symbol, 1, 'sell', 5000, curPrice);
     }
-
-    // 전략 2안: 기본 매수/매도
+    // 전략 2안
     if (curPrice <= bands.down15) execute(symbol, 2, 'buy', 5000, curPrice);
     else if (curPrice >= bands.up15) execute(symbol, 2, 'sell', 5000, curPrice);
 }
@@ -195,34 +220,42 @@ function execute(symbol, strategyNum, type, krw, price) {
     if (type === 'buy' && data[balKey] >= krw) {
         data[balKey] -= krw;
         data[coinKey] += krw / price;
+        addLog(symbol, `[전략${strategyNum}] 매수: ${krw}원`);
     } else if (type === 'sell' && data[coinKey] > 0) {
         const sellAmt = Math.min(data[coinKey] * price, krw);
         data[balKey] += sellAmt;
         data[coinKey] -= sellAmt / price;
+        addLog(symbol, `[전략${strategyNum}] 매도: ${Math.floor(sellAmt)}원`);
     }
 }
 
-// --- [UI 엔진] 표 업데이트 ---
-function updateTable() {
+function addLog(symbol, msg) {
+    const time = new Date().toLocaleTimeString();
+    coinData[symbol].logs.unshift(`[${time}] ${msg}`);
+    if (coinData[symbol].logs.length > 30) coinData[symbol].logs.pop();
+}
+
+function updateUI() {
     const tbody = document.querySelector('#result-table tbody');
     tbody.innerHTML = '';
     coins.forEach(symbol => {
         const d = coinData[symbol];
-        const row = `<tr>
+        tbody.innerHTML += `<tr>
             <td class="coin-name">${coinNames[symbol]}</td>
-            <td class="strategy-1">${Math.floor(d.balance1).toLocaleString()}원</td>
+            <td>${Math.floor(d.balance1).toLocaleString()}원</td>
             <td>${d.coin1.toFixed(6)}</td>
-            <td class="strategy-2">${Math.floor(d.balance2).toLocaleString()}원</td>
+            <td>${Math.floor(d.balance2).toLocaleString()}원</td>
             <td>${d.coin2.toFixed(6)}</td>
         </tr>`;
-        tbody.innerHTML += row;
+        document.getElementById(`log-${symbol}`).innerHTML = d.logs.join('<br>');
     });
 }
 
-// 가동 시작
+// 가동
+loadFromLocal();
 initCharts();
-fetchAllData();
-setInterval(fetchAllData, 60000); // 1분마다 전체 갱신
+runCycle();
+setInterval(runCycle, 60000);
 </script>
 </body>
 </html>
