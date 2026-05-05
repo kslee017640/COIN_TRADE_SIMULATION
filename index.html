@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.5 (Total Asset View)</title>
-    <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
+    <title>통합 관제 스테이션 V4.6 (Always ON)</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        /* 화면을 예쁘게 꾸미는 약속들이에요 */
         :root { --main-blue: #004ea1; --up-red: #e74c3c; --down-blue: #2980b9; }
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
         .card { background: white; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
@@ -27,8 +25,9 @@
         .log-area { font-size: 11px; height: 120px; overflow-y: auto; background: #1e272e; color: #d2dae2; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; }
         .status-bar { text-align: right; font-size: 11px; color: #7f8c8d; margin-bottom: 5px; }
         .eval-price { color: #888; font-size: 11px; margin-left: 5px; }
-        /* 총 자산 숫자를 잘 보이게 강조해요 */
         .total-asset { font-weight: bold; color: #27ae60; }
+        /* 화면 유지 상태를 알려주는 스타일이에요 */
+        #wake-lock-status { font-weight: bold; color: #f1c40f; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -44,7 +43,9 @@
                 <option value="360">360분 (6시간)</option>
             </select>
         </div>
-        <div style="display: flex;">
+        <div style="display: flex; align-items: center;">
+            <!-- 화면이 계속 켜져 있는지 확인하는 알림창이에요 -->
+            <span id="wake-lock-status">📱 화면 유지 준비 중...</span>
             <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
             <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
         </div>
@@ -60,7 +61,6 @@
                     <th>현재가</th>
                     <th>보유 현금</th>
                     <th>보유 코인 (평가금액)</th>
-                    <!-- 표의 맨 오른쪽에 한 칸을 더 만들었어요! -->
                     <th>총 자산 (현금+코인)</th>
                 </tr>
             </thead>
@@ -71,16 +71,41 @@
     <div id="charts-area"></div>
 
 <script>
-// 구글 시트 주소예요
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzk3RlYiDQtn0_iyDwHIpAGYoVOM3YY8ELyJ-GXCvhtAzDWF2QOM-uBnBNRkln_RjLjSw/exec";
-// 우리가 감시하는 코인들이에요
 const coins = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-DOGE"];
 const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XRP": "리플", "KRW-DOGE": "도지코인"};
 let coinData = {};
 let chartObjects = {};
 let emaWindow = 120;
+let wakeLock = null; // 화면을 안 꺼지게 잡아두는 집게 역할을 해요
 
-// 컴퓨터에 저장된 내 돈 정보를 불러와요
+// --- [새로 추가된 기능: 화면 유지] ---
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            document.getElementById('wake-lock-status').innerText = "🌞 화면 유지 중";
+            console.log("Wake Lock is active!");
+            
+            // 만약 잠시 화면을 껐다 켰을 때 다시 기능을 활성화해요
+            wakeLock.addEventListener('release', () => {
+                console.log('Wake Lock was released');
+            });
+        }
+    } catch (err) {
+        document.getElementById('wake-lock-status').innerText = "🚫 유지 불가";
+        console.error(`${err.name}, ${err.message}`);
+    }
+}
+// 사용자가 화면을 터치할 때 다시 한 번 화면 유지를 요청해요 (보안 정책 때문이에요)
+document.addEventListener('click', requestWakeLock);
+document.addEventListener('visibilitychange', () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+    }
+});
+// ---------------------------------
+
 function initData() {
     const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
@@ -98,7 +123,6 @@ function initData() {
     }
 }
 
-// 처음부터 다시 시작하고 싶을 때 눌러요
 function resetData() {
     if(confirm("모든 데이터를 초기화하고 다시 시작할까요?")) {
         localStorage.removeItem('crypto_sim_v4_4');
@@ -106,7 +130,6 @@ function resetData() {
     }
 }
 
-// 내 데이터를 구글에 안전하게 보내요
 async function cloudSync() {
     try {
         await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'sync', data: coinData }) });
@@ -116,7 +139,6 @@ async function cloudSync() {
 
 function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
-// 화면에 그래프를 그릴 준비를 해요
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -147,7 +169,6 @@ function initCharts() {
     });
 }
 
-// 평균 가격을 계산하는 수학 공식이에요
 function calculateEMA(data, window) {
     const k = 2 / (window + 1);
     let emaArray = [data[0]];
@@ -155,13 +176,12 @@ function calculateEMA(data, window) {
     return emaArray;
 }
 
-// 가격이 얼마나 변하는지 계산하는 공식이에요
-function calculateRollingStd(data, window, emaData) {
+function calculateRollingStd(data, window, width) {
     let stdArray = [];
     for (let i = 0; i < data.length; i++) {
-        const start = Math.max(0, i - window + 1);
+        const start = Math.max(0, i - width + 1);
         const subset = data.slice(start, i + 1);
-        const mean = emaData[i];
+        const mean = subset.reduce((a, b) => a + b, 0) / subset.length;
         const variance = subset.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / subset.length;
         stdArray.push(Math.sqrt(variance));
     }
@@ -173,7 +193,6 @@ function changeParameters() {
     runCycle();
 }
 
-// 1분마다 업비트에서 가격을 가져와서 사고팔지 결정해요
 async function runCycle() {
     for (const symbol of coins) {
         try {
@@ -189,7 +208,7 @@ async function runCycle() {
             const closes = rawData.map(c => c.close);
             const emaCount = Math.floor(emaWindow / 10);
             const emaValues = calculateEMA(closes, emaCount);
-            const stdValues = calculateRollingStd(closes, emaCount, emaValues);
+            const stdValues = calculateRollingStd(closes, emaCount, emaCount);
 
             const obj = chartObjects[symbol];
             obj.candle.setData(rawData);
@@ -215,7 +234,6 @@ async function runCycle() {
             const up15 = mid + std * 1.5;
             const down15 = mid - std * 1.5;
 
-            // 정해진 규칙에 따라 사고팔아요
             if (curPrice > up3) {
                 execute(symbol, 'sell', 10000, curPrice);
             } else if (curPrice > up15) {
@@ -232,7 +250,6 @@ async function runCycle() {
     localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
-// 진짜로 코인을 사거나 파는 계산을 하는 곳이에요
 function execute(symbol, type, krw, price) {
     const data = coinData[symbol];
     if (type === 'buy' && data.balance >= krw) {
@@ -245,42 +262,38 @@ function execute(symbol, type, krw, price) {
     }
 }
 
-// 어떤 일이 있었는지 기록을 남겨요
 function addLog(symbol, msg) {
     const time = new Date().toLocaleTimeString();
     coinData[symbol].logs.unshift(`[${time}] ${msg}`);
     if (coinData[symbol].logs.length > 20) coinData[symbol].logs.pop();
 }
 
-// 화면에 보이는 숫자들을 최신 정보로 바꿔줘요
 function updateUI() {
     const tbody = document.querySelector('#result-table tbody');
     tbody.innerHTML = '';
     coins.forEach(symbol => {
         const d = coinData[symbol];
-        const evalPrice = Math.floor(d.coin * d.lastPrice); // 지금 내 코인이 얼마인지 계산해요
-        const totalAsset = Math.floor(d.balance + evalPrice); // 현금이랑 코인 평가금을 더해요!
+        const evalPrice = Math.floor(d.coin * d.lastPrice);
+        const totalAsset = Math.floor(d.balance + evalPrice);
 
         tbody.innerHTML += `<tr>
             <td class="coin-name">${coinNames[symbol]}</td>
             <td>${d.lastPrice.toLocaleString()}원</td>
             <td>${Math.floor(d.balance).toLocaleString()}원</td>
             <td>${d.coin.toFixed(6)} <span class="eval-price">(${evalPrice.toLocaleString()}원)</span></td>
-            <!-- 표의 맨 우측에 총 자산을 보여줘요 -->
             <td class="total-asset">${totalAsset.toLocaleString()}원</td>
         </tr>`;
         document.getElementById(`log-${symbol}`).innerHTML = d.logs.join('<br>');
     });
 }
 
-// 자동으로 일을 시키는 타이머예요
 setInterval(runCycle, 60000); 
 setInterval(cloudSync, 3600000); 
 
-// 처음 시작할 때 하는 일들이에요
 initData();
 initCharts();
 runCycle();
+requestWakeLock(); // 시작할 때 화면 유지 기능을 켜요!
 </script>
 </body>
 </html>
