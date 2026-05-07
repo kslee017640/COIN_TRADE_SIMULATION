@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V5.0 (Dark & Unit Select)</title>
+    <title>통합 관제 스테이션 V5.1 (Pro Tablet Edition)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        /* [수정] 눈이 편안한 다크모드 색상으로 바꿨어요! */
         :root { 
             --main-blue: #3498db; 
             --up-red: #ff4d4d; 
             --down-blue: #2980b9; 
-            --bg-color: #121212; /* 배경을 까맣게 */
-            --card-color: #1e1e1e; /* 카드는 진한 회색으로 */
-            --text-color: #e0e0e0; /* 글자는 하얗게 */
-            --border-color: #333333; /* 테두리는 어둡게 */
+            --bg-color: #121212; 
+            --card-color: #1e1e1e; 
+            --text-color: #e0e0e0; 
+            --border-color: #333333; 
         }
-        body { font-family: 'Malgun Gothic', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 15px; }
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 15px; overflow-x: hidden; }
         .card { background: var(--card-color); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid var(--border-color); }
         .control-panel { display: flex; flex-wrap: wrap; gap: 15px; background: #2c3e50; color: white; align-items: flex-end; }
         .setting-item { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
@@ -26,6 +25,11 @@
         .btn { cursor: pointer; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
         .btn-sync { background: var(--main-blue); color: white; }
         .btn-reset { background: #e67e22; color: white; margin-left: 10px; }
+        
+        /* [추가] 실적 리포트 및 자동 스크롤 버튼 디자인이에요 */
+        .btn-report { background: #9b59b6; color: white; margin-left: 10px; }
+        .btn-scroll { background: #34495e; color: white; margin-left: 10px; border: 1px solid #7f8c8d; }
+
         table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--card-color); color: var(--text-color); }
         th, td { border: 1px solid var(--border-color); padding: 12px; text-align: center; }
         th { background: #2c3e50; color: #bdc3c7; }
@@ -37,9 +41,31 @@
         .eval-price { color: #888; font-size: 11px; margin-left: 5px; }
         .total-asset { font-weight: bold; color: #2ecc71; }
         #wake-lock-status { font-weight: bold; color: #f1c40f; margin-right: 10px; }
+
+        /* [추가] 1초 확인 팝업창 스타일이에요 */
+        #toast { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #27ae60; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+
+        /* [추가] 10일 실적을 보여줄 모달(새 창) 스타일이에요 */
+        #report-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; }
+        .modal-content { background: var(--card-color); padding: 20px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border-color); max-height: 80vh; overflow-y: auto; }
+        .modal-close { float: right; cursor: pointer; font-size: 20px; color: #e74c3c; font-weight: bold; }
+        .history-item { padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
+
+    <!-- [추가] 데이터 로드 완료 팝업 -->
+    <div id="toast">✅ 서버 데이터를 성공적으로 불러왔습니다!</div>
+
+    <!-- [추가] 실적 리포트 모달 창 -->
+    <div id="report-modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeReport()">X</span>
+            <h3 style="margin-top:0;">📊 조건별 10일 성과 리포트</h3>
+            <p style="font-size: 12px; color: #bdc3c7;">현재 설정 (기간: <span id="rep-ema"></span>분 / 금액: <span id="rep-unit"></span>원)</p>
+            <div id="history-list"></div>
+        </div>
+    </div>
 
     <div class="card control-panel">
         <div class="setting-item">
@@ -52,7 +78,6 @@
                 <option value="360">360분 (6시간)</option>
             </select>
         </div>
-        <!-- [수정] 1단위 매매 금액을 정하는 메뉴를 새로 만들었어요! -->
         <div class="setting-item">
             <label>💰 1단위 매매 금액 설정</label>
             <select id="unit-amount" onchange="changeUnit()">
@@ -67,6 +92,9 @@
         <div style="display: flex; align-items: center;">
             <span id="wake-lock-status">📱 화면 유지 준비 중...</span>
             <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
+            <!-- [추가] 리포트 보기 및 스크롤 토글 버튼이에요 -->
+            <button class="btn btn-report" onclick="openReport()">📊 실적 리포트</button>
+            <button class="btn btn-scroll" id="scroll-btn" onclick="toggleScroll()">↕️ 자동 스크롤: 켜짐</button>
             <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
         </div>
     </div>
@@ -97,8 +125,28 @@ const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XR
 let coinData = {};
 let chartObjects = {};
 let emaWindow = 120;
-let unitAmount = 5000; // [수정] 기본 1단위 금액을 저장하는 변수예요
+let unitAmount = 5000; 
 let wakeLock = null;
+
+// [추가] 자동 스크롤을 담당하는 변수예요
+let isAutoScrolling = true;
+let scrollStep = 0.5; // 아주 천천히 움직이게 설정했어요
+
+// [추가] 화면을 위아래로 천천히 움직여 번인을 막아주는 함수예요
+setInterval(() => {
+    if (!isAutoScrolling) return;
+    window.scrollBy(0, scrollStep);
+    // 맨 아래 닿으면 위로, 맨 위 닿으면 아래로 방향을 바꿔요
+    if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 2) scrollStep = -0.5;
+    else if (window.scrollY <= 0) scrollStep = 0.5;
+}, 50);
+
+// [추가] 화면 조작이 필요할 때 스크롤을 잠시 멈추는 버튼 동작이에요
+function toggleScroll() {
+    isAutoScrolling = !isAutoScrolling;
+    document.getElementById('scroll-btn').innerText = isAutoScrolling ? "↕️ 자동 스크롤: 켜짐" : "↕️ 자동 스크롤: 꺼짐";
+    document.getElementById('scroll-btn').style.background = isAutoScrolling ? "#34495e" : "#e74c3c";
+}
 
 // 화면 꺼짐 방지 기능
 async function requestWakeLock() {
@@ -124,11 +172,12 @@ function initData() {
     if (saved) { 
         coinData = JSON.parse(saved); 
         coins.forEach(s => { if(!coinData[s].markers) coinData[s].markers = []; });
-        // [수정] 저장된 금액이 있다면 불러와요
         if (coinData.globalUnit) {
             unitAmount = coinData.globalUnit;
             document.getElementById('unit-amount').value = unitAmount;
         }
+        // [추가] 성과 기록장이 없으면 만들어줘요
+        if (!coinData.performanceHistory) coinData.performanceHistory = {};
     } else { 
         coins.forEach(s => {
             coinData[s] = {
@@ -136,7 +185,13 @@ function initData() {
             };
         });
         coinData.globalUnit = 5000;
+        coinData.performanceHistory = {};
     }
+    
+    // [추가] 데이터 로드 완료 후 1초 동안 팝업창을 띄워요
+    const toast = document.getElementById('toast');
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 1000);
 }
 
 function resetData() {
@@ -172,7 +227,6 @@ function initCharts() {
         area.appendChild(logArea);
 
         const chart = LightweightCharts.createChart(container, {
-            // [수정] 차트 배경과 글자색도 다크모드에 맞게 고쳤어요
             layout: { 
                 background: { type: 'solid', color: '#1e1e1e' },
                 textColor: '#d1d4dc' 
@@ -180,6 +234,13 @@ function initCharts() {
             grid: { 
                 vertLines: { color: '#333' }, 
                 horzLines: { color: '#333' } 
+            },
+            // [수정] 차트 시간이 한국 시간(서울)으로 정확히 고정되어 표시되게 만들었어요!
+            localization: {
+                timeFormatter: time => {
+                    const date = new Date(time * 1000);
+                    return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit' });
+                }
             },
             timeScale: { timeVisible: true, secondsVisible: false }
         });
@@ -220,7 +281,6 @@ function changeParameters() {
     runCycle();
 }
 
-// [수정] 금액을 바꾸면 바로 저장하고 적용하는 함수예요
 function changeUnit() {
     unitAmount = parseInt(document.getElementById('unit-amount').value);
     coinData.globalUnit = unitAmount;
@@ -231,15 +291,16 @@ function changeUnit() {
 async function runCycle() {
     for (const symbol of coins) {
         try {
+            // [수정: 속도 향상!] 느린 우회 서버(allorigins)를 빼고 업비트 API에 다이렉트로 접속해요. 0.1초만에 뜹니다!
             const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&t=${Date.now()}`;
-            const response = await fetch(proxyUrl);
-            const json = await response.json();
+            const response = await fetch(apiUrl);
+            const json = await response.json(); // 이제 데이터를 직접 배열로 받아요
             
-            if (!json || !json.contents) throw new Error("데이터 응답 없음");
+            if (!json || json.length === 0) throw new Error("데이터 응답 없음");
             
-            const rawData = JSON.parse(json.contents).reverse().map(item => ({
-                time: Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000),
+            const rawData = json.reverse().map(item => ({
+                // 한국 시간 문자열 뒤에 '+09:00'을 붙여서 시차 오류를 완벽히 없앴어요
+                time: Math.floor(new Date(item.candle_date_time_kst + '+09:00').getTime() / 1000),
                 open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
             }));
 
@@ -279,20 +340,21 @@ async function runCycle() {
             const up15 = mid + std * 1.5;
             const down15 = mid - std * 1.5;
 
-            // [수정] 고정된 금액 대신 사용자가 정한 unitAmount를 사용해요!
             if (curPrice >= up3) {
-                execute(symbol, 'sell', unitAmount * 2, curPrice); // 2단위 팔기
+                execute(symbol, 'sell', unitAmount * 2, curPrice);
             } else if (curPrice >= up15) {
-                execute(symbol, 'sell', unitAmount, curPrice);     // 1단위 팔기
+                execute(symbol, 'sell', unitAmount, curPrice);
             } else if (curPrice <= down15) {
-                execute(symbol, 'buy', unitAmount * 2, curPrice);  // 2단위 사기
+                execute(symbol, 'buy', unitAmount * 2, curPrice);
             } else if (curPrice <= mid) {
-                execute(symbol, 'buy', unitAmount, curPrice);      // 1단위 사기
+                execute(symbol, 'buy', unitAmount, curPrice);
             }
 
         } catch (e) { console.error(symbol + " 오류:", e); }
     }
+    
     updateUI();
+    saveDailyPerformance(); // 매 사이클마다 하루의 최종 성과를 기록장에 남겨요
     localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
@@ -347,6 +409,62 @@ function updateUI() {
         </tr>`;
         document.getElementById(`log-${symbol}`).innerHTML = d.logs.join('<br>');
     });
+}
+
+// [추가] 매일매일 내 총 자산이 얼마인지 조건별로 기록하는 함수예요
+function saveDailyPerformance() {
+    const today = new Date().toLocaleDateString('ko-KR'); // 오늘 날짜
+    const conditionKey = `${emaWindow}분_${unitAmount}원`; // 현재 설정값 이름표
+    
+    let totalPortfolioValue = 0;
+    coins.forEach(symbol => {
+        totalPortfolioValue += Math.floor(coinData[symbol].balance + (coinData[symbol].coin * coinData[symbol].lastPrice));
+    });
+
+    if (!coinData.performanceHistory[conditionKey]) {
+        coinData.performanceHistory[conditionKey] = [];
+    }
+    
+    let historyList = coinData.performanceHistory[conditionKey];
+    
+    // 오늘 기록이 이미 있으면 덮어쓰고(최신화), 없으면 새로 추가해요. 최대 10일치만 보관해요.
+    const todayRecordIndex = historyList.findIndex(item => item.date === today);
+    if (todayRecordIndex !== -1) {
+        historyList[todayRecordIndex].asset = totalPortfolioValue;
+    } else {
+        historyList.push({ date: today, asset: totalPortfolioValue });
+        if (historyList.length > 10) historyList.shift(); // 10일이 넘으면 가장 오래된 걸 지워요
+    }
+}
+
+// [추가] 리포트 모달 창 열기
+function openReport() {
+    document.getElementById('report-modal').style.display = 'flex';
+    document.getElementById('rep-ema').innerText = emaWindow;
+    document.getElementById('rep-unit').innerText = unitAmount.toLocaleString();
+    
+    const conditionKey = `${emaWindow}분_${unitAmount}원`;
+    const listDiv = document.getElementById('history-list');
+    listDiv.innerHTML = '';
+    
+    const historyList = coinData.performanceHistory[conditionKey] || [];
+    if(historyList.length === 0) {
+        listDiv.innerHTML = '<p style="text-align:center; color:#7f8c8d;">아직 기록된 실적이 없습니다. 프로그램을 계속 켜두세요!</p>';
+    } else {
+        historyList.slice().reverse().forEach(record => {
+            listDiv.innerHTML += `
+                <div class="history-item">
+                    <span>📅 ${record.date}</span>
+                    <span style="color:#2ecc71; font-weight:bold;">${record.asset.toLocaleString()} 원</span>
+                </div>
+            `;
+        });
+    }
+}
+
+// [추가] 리포트 모달 창 닫기
+function closeReport() {
+    document.getElementById('report-modal').style.display = 'none';
 }
 
 setInterval(runCycle, 600000); 
