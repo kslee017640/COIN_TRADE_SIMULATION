@@ -3,30 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V4.9 (Accurate Bollinger Bands)</title>
+    <title>통합 관제 스테이션 V5.0 (Dark & Unit Select)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        :root { --main-blue: #004ea1; --up-red: #e74c3c; --down-blue: #2980b9; }
-        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
-        .card { background: white; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
+        /* [수정] 눈이 편안한 다크모드 색상으로 바꿨어요! */
+        :root { 
+            --main-blue: #3498db; 
+            --up-red: #ff4d4d; 
+            --down-blue: #2980b9; 
+            --bg-color: #121212; /* 배경을 까맣게 */
+            --card-color: #1e1e1e; /* 카드는 진한 회색으로 */
+            --text-color: #e0e0e0; /* 글자는 하얗게 */
+            --border-color: #333333; /* 테두리는 어둡게 */
+        }
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 15px; }
+        .card { background: var(--card-color); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid var(--border-color); }
         .control-panel { display: flex; flex-wrap: wrap; gap: 15px; background: #2c3e50; color: white; align-items: flex-end; }
         .setting-item { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
         label { font-size: 11px; color: #bdc3c7; font-weight: bold; }
-        select { padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #ecf0f1; font-weight: bold; }
+        select { padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #34495e; color: white; font-weight: bold; }
         .btn { cursor: pointer; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
         .btn-sync { background: var(--main-blue); color: white; }
         .btn-reset { background: #e67e22; color: white; margin-left: 10px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; background: white; }
-        th, td { border: 1px solid #eee; padding: 12px; text-align: center; }
-        th { background: #f8f9fa; color: #666; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--card-color); color: var(--text-color); }
+        th, td { border: 1px solid var(--border-color); padding: 12px; text-align: center; }
+        th { background: #2c3e50; color: #bdc3c7; }
         .coin-name { font-weight: bold; color: var(--main-blue); }
-        .chart-container { width: 100%; height: 380px; margin-top: 10px; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; background: white; }
-        .chart-title { font-size: 15px; font-weight: bold; margin-top: 20px; padding-left: 10px; border-left: 5px solid var(--main-blue); color: #333; }
-        .log-area { font-size: 11px; height: 120px; overflow-y: auto; background: #1e272e; color: #d2dae2; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; }
+        .chart-container { width: 100%; height: 380px; margin-top: 10px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); background: var(--card-color); }
+        .chart-title { font-size: 15px; font-weight: bold; margin-top: 20px; padding-left: 10px; border-left: 5px solid var(--main-blue); color: var(--text-color); }
+        .log-area { font-size: 11px; height: 120px; overflow-y: auto; background: #000000; color: #00ff00; padding: 10px; margin-top: 10px; border-radius: 5px; font-family: 'Consolas', monospace; border: 1px solid var(--border-color); }
         .status-bar { text-align: right; font-size: 11px; color: #7f8c8d; margin-bottom: 5px; }
         .eval-price { color: #888; font-size: 11px; margin-left: 5px; }
-        .total-asset { font-weight: bold; color: #27ae60; }
+        .total-asset { font-weight: bold; color: #2ecc71; }
         #wake-lock-status { font-weight: bold; color: #f1c40f; margin-right: 10px; }
     </style>
 </head>
@@ -41,6 +50,18 @@
                 <option value="180">180분 (3시간)</option>
                 <option value="240">240분 (4시간)</option>
                 <option value="360">360분 (6시간)</option>
+            </select>
+        </div>
+        <!-- [수정] 1단위 매매 금액을 정하는 메뉴를 새로 만들었어요! -->
+        <div class="setting-item">
+            <label>💰 1단위 매매 금액 설정</label>
+            <select id="unit-amount" onchange="changeUnit()">
+                <option value="5000" selected>5,000원</option>
+                <option value="10000">10,000원</option>
+                <option value="15000">15,000원</option>
+                <option value="20000">20,000원</option>
+                <option value="25000">25,000원</option>
+                <option value="30000">30,000원</option>
             </select>
         </div>
         <div style="display: flex; align-items: center;">
@@ -76,6 +97,7 @@ const coinNames = {"KRW-BTC": "비트코인", "KRW-ETH": "이더리움", "KRW-XR
 let coinData = {};
 let chartObjects = {};
 let emaWindow = 120;
+let unitAmount = 5000; // [수정] 기본 1단위 금액을 저장하는 변수예요
 let wakeLock = null;
 
 // 화면 꺼짐 방지 기능
@@ -102,17 +124,18 @@ function initData() {
     if (saved) { 
         coinData = JSON.parse(saved); 
         coins.forEach(s => { if(!coinData[s].markers) coinData[s].markers = []; });
+        // [수정] 저장된 금액이 있다면 불러와요
+        if (coinData.globalUnit) {
+            unitAmount = coinData.globalUnit;
+            document.getElementById('unit-amount').value = unitAmount;
+        }
     } else { 
         coins.forEach(s => {
             coinData[s] = {
-                balance: 1000000, 
-                coin: 0, 
-                lastPrice: 0,
-                logs: [],
-                markers: [], 
-                isNewAccount: true 
+                balance: 1000000, coin: 0, lastPrice: 0, logs: [], markers: [], isNewAccount: true 
             };
         });
+        coinData.globalUnit = 5000;
     }
 }
 
@@ -132,7 +155,7 @@ async function cloudSync() {
 
 function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
-// 화면에 멋진 코인 그래프 그림판을 만드는 함수예요
+// 화면에 그래프를 그려주는 함수예요
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -149,20 +172,26 @@ function initCharts() {
         area.appendChild(logArea);
 
         const chart = LightweightCharts.createChart(container, {
-            layout: { textColor: '#333' },
-            grid: { vertLines: { color: '#f2f2f2' }, horzLines: { color: '#f2f2f2' } },
+            // [수정] 차트 배경과 글자색도 다크모드에 맞게 고쳤어요
+            layout: { 
+                background: { type: 'solid', color: '#1e1e1e' },
+                textColor: '#d1d4dc' 
+            },
+            grid: { 
+                vertLines: { color: '#333' }, 
+                horzLines: { color: '#333' } 
+            },
             timeScale: { timeVisible: true, secondsVisible: false }
         });
         
-        // [수정된 부분] 밴드의 선 색상과 굵기를 요청하신 대로 정확히 맞췄어요!
         chartObjects[symbol] = {
             chart: chart,
             candle: chart.addCandlestickSeries({ upColor: '#e74c3c', downColor: '#2980b9' }),
-            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 2 }), // +3.0 표준편차 (굵은 녹색)
-            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 2 }), // +1.5 표준편차 (굵은 연두색)
-            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 2 }), // 기간 설정 값 (노란색 실선)
-            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 2 }), // -1.5 표준편차 (굵은 주황색)
-            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 2 })  // -3.0 표준편차 (굵은 붉은색) - 추가됨!
+            up3: chart.addLineSeries({ color: '#27ae60', lineWidth: 2 }),
+            up15: chart.addLineSeries({ color: '#a2dd71', lineWidth: 2 }),
+            mid: chart.addLineSeries({ color: '#f1c40f', lineWidth: 2 }),
+            down15: chart.addLineSeries({ color: '#e67e22', lineWidth: 2 }),
+            down3: chart.addLineSeries({ color: '#e74c3c', lineWidth: 2 })
         };
     });
 }
@@ -191,6 +220,13 @@ function changeParameters() {
     runCycle();
 }
 
+// [수정] 금액을 바꾸면 바로 저장하고 적용하는 함수예요
+function changeUnit() {
+    unitAmount = parseInt(document.getElementById('unit-amount').value);
+    coinData.globalUnit = unitAmount;
+    localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
+}
+
 // 10분마다 실행되는 핵심 함수예요
 async function runCycle() {
     for (const symbol of coins) {
@@ -215,18 +251,14 @@ async function runCycle() {
             const obj = chartObjects[symbol];
             const target = coinData[symbol];
             
-            // [수정된 부분] 5개의 선 모두에 계산된 데이터를 넣어줘서 차트에 완벽하게 그려지게 해요!
             obj.candle.setData(rawData);
             obj.up3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 3 })));
             obj.up15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] + stdValues[i] * 1.5 })));
             obj.mid.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] })));
             obj.down15.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 1.5 })));
-            obj.down3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 }))); // 누락되었던 -3.0 데이터 연결 완료!
+            obj.down3.setData(rawData.map((c, i) => ({ time: c.time, value: emaValues[i] - stdValues[i] * 3 })));
 
-            // 매매 별표를 차트 위에 뿌려줘요
             obj.candle.setMarkers(target.markers || []);
-            
-            // 차트가 텅 비어 보이지 않게 데이터를 화면에 꽉 채워줘요
             obj.chart.timeScale().fitContent();
 
             const curPrice = rawData[rawData.length - 1].close;
@@ -246,20 +278,17 @@ async function runCycle() {
             const up3 = mid + std * 3;
             const up15 = mid + std * 1.5;
             const down15 = mid - std * 1.5;
-            // down3(하단 붉은선) 변수도 시각화용으로 사용할 수 있게 준비 완료
-            const down3 = mid - std * 3; 
 
-            // 확인해주신 매매 조건과 완벽하게 일치하는 로직입니다.
+            // [수정] 고정된 금액 대신 사용자가 정한 unitAmount를 사용해요!
             if (curPrice >= up3) {
-                execute(symbol, 'sell', 10000, curPrice); // 굵은 녹색 이상: 2단위 팔기
+                execute(symbol, 'sell', unitAmount * 2, curPrice); // 2단위 팔기
             } else if (curPrice >= up15) {
-                execute(symbol, 'sell', 5000, curPrice);  // 연두색 ~ 녹색 사이: 1단위 팔기
+                execute(symbol, 'sell', unitAmount, curPrice);     // 1단위 팔기
             } else if (curPrice <= down15) {
-                execute(symbol, 'buy', 10000, curPrice);  // 굵은 주황색 이하: 2단위 사기
+                execute(symbol, 'buy', unitAmount * 2, curPrice);  // 2단위 사기
             } else if (curPrice <= mid) {
-                execute(symbol, 'buy', 5000, curPrice);   // 노란 실선 ~ 주황색 사이: 1단위 사기
+                execute(symbol, 'buy', unitAmount, curPrice);      // 1단위 사기
             }
-            // 0 ~ +1.5 구간(노란 실선 초과 ~ 연두색 미만)은 위 조건들에 걸리지 않으므로 '관망'하게 됩니다.
 
         } catch (e) { console.error(symbol + " 오류:", e); }
     }
@@ -267,7 +296,6 @@ async function runCycle() {
     localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
-// 실제 사고파는 동작과 함께 별표를 기록해요
 function execute(symbol, type, krw, price) {
     const data = coinData[symbol];
     if (type === 'buy' && data.balance >= krw) {
@@ -277,7 +305,7 @@ function execute(symbol, type, krw, price) {
         data.markers.push({
             time: data.lastTime,
             position: 'belowBar',
-            color: '#27ae60',
+            color: '#2ecc71',
             shape: 'star',
             text: '매수'
         });
@@ -321,7 +349,6 @@ function updateUI() {
     });
 }
 
-// 10분마다 실행해요
 setInterval(runCycle, 600000); 
 setInterval(cloudSync, 3600000); 
 
