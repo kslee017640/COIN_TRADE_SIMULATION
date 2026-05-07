@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V5.1 (Pro Tablet Edition)</title>
+    <title>통합 관제 스테이션 V5.2 (API Fix)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -26,7 +26,6 @@
         .btn-sync { background: var(--main-blue); color: white; }
         .btn-reset { background: #e67e22; color: white; margin-left: 10px; }
         
-        /* [추가] 실적 리포트 및 자동 스크롤 버튼 디자인이에요 */
         .btn-report { background: #9b59b6; color: white; margin-left: 10px; }
         .btn-scroll { background: #34495e; color: white; margin-left: 10px; border: 1px solid #7f8c8d; }
 
@@ -42,10 +41,8 @@
         .total-asset { font-weight: bold; color: #2ecc71; }
         #wake-lock-status { font-weight: bold; color: #f1c40f; margin-right: 10px; }
 
-        /* [추가] 1초 확인 팝업창 스타일이에요 */
         #toast { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #27ae60; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 
-        /* [추가] 10일 실적을 보여줄 모달(새 창) 스타일이에요 */
         #report-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; }
         .modal-content { background: var(--card-color); padding: 20px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border-color); max-height: 80vh; overflow-y: auto; }
         .modal-close { float: right; cursor: pointer; font-size: 20px; color: #e74c3c; font-weight: bold; }
@@ -54,10 +51,8 @@
 </head>
 <body>
 
-    <!-- [추가] 데이터 로드 완료 팝업 -->
     <div id="toast">✅ 서버 데이터를 성공적으로 불러왔습니다!</div>
 
-    <!-- [추가] 실적 리포트 모달 창 -->
     <div id="report-modal">
         <div class="modal-content">
             <span class="modal-close" onclick="closeReport()">X</span>
@@ -92,7 +87,6 @@
         <div style="display: flex; align-items: center;">
             <span id="wake-lock-status">📱 화면 유지 준비 중...</span>
             <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
-            <!-- [추가] 리포트 보기 및 스크롤 토글 버튼이에요 -->
             <button class="btn btn-report" onclick="openReport()">📊 실적 리포트</button>
             <button class="btn btn-scroll" id="scroll-btn" onclick="toggleScroll()">↕️ 자동 스크롤: 켜짐</button>
             <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
@@ -128,27 +122,22 @@ let emaWindow = 120;
 let unitAmount = 5000; 
 let wakeLock = null;
 
-// [추가] 자동 스크롤을 담당하는 변수예요
 let isAutoScrolling = true;
-let scrollStep = 0.5; // 아주 천천히 움직이게 설정했어요
+let scrollStep = 0.5; 
 
-// [추가] 화면을 위아래로 천천히 움직여 번인을 막아주는 함수예요
 setInterval(() => {
     if (!isAutoScrolling) return;
     window.scrollBy(0, scrollStep);
-    // 맨 아래 닿으면 위로, 맨 위 닿으면 아래로 방향을 바꿔요
     if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 2) scrollStep = -0.5;
     else if (window.scrollY <= 0) scrollStep = 0.5;
 }, 50);
 
-// [추가] 화면 조작이 필요할 때 스크롤을 잠시 멈추는 버튼 동작이에요
 function toggleScroll() {
     isAutoScrolling = !isAutoScrolling;
     document.getElementById('scroll-btn').innerText = isAutoScrolling ? "↕️ 자동 스크롤: 켜짐" : "↕️ 자동 스크롤: 꺼짐";
     document.getElementById('scroll-btn').style.background = isAutoScrolling ? "#34495e" : "#e74c3c";
 }
 
-// 화면 꺼짐 방지 기능
 async function requestWakeLock() {
     try {
         if ('wakeLock' in navigator) {
@@ -166,7 +155,6 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// 데이터 초기화
 function initData() {
     const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
@@ -176,7 +164,6 @@ function initData() {
             unitAmount = coinData.globalUnit;
             document.getElementById('unit-amount').value = unitAmount;
         }
-        // [추가] 성과 기록장이 없으면 만들어줘요
         if (!coinData.performanceHistory) coinData.performanceHistory = {};
     } else { 
         coins.forEach(s => {
@@ -188,7 +175,6 @@ function initData() {
         coinData.performanceHistory = {};
     }
     
-    // [추가] 데이터 로드 완료 후 1초 동안 팝업창을 띄워요
     const toast = document.getElementById('toast');
     toast.style.display = 'block';
     setTimeout(() => { toast.style.display = 'none'; }, 1000);
@@ -210,7 +196,6 @@ async function cloudSync() {
 
 function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
-// 화면에 그래프를 그려주는 함수예요
 function initCharts() {
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
@@ -235,7 +220,6 @@ function initCharts() {
                 vertLines: { color: '#333' }, 
                 horzLines: { color: '#333' } 
             },
-            // [수정] 차트 시간이 한국 시간(서울)으로 정확히 고정되어 표시되게 만들었어요!
             localization: {
                 timeFormatter: time => {
                     const date = new Date(time * 1000);
@@ -287,19 +271,20 @@ function changeUnit() {
     localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
-// 10분마다 실행되는 핵심 함수예요
 async function runCycle() {
     for (const symbol of coins) {
         try {
-            // [수정: 속도 향상!] 느린 우회 서버(allorigins)를 빼고 업비트 API에 다이렉트로 접속해요. 0.1초만에 뜹니다!
+            // [수정된 부분!] 
+            // 업비트 서버가 화내지 않게, 각 코인을 물어보기 전에 0.5초(500ms)씩 잠깐 쉬어줍니다.
+            await new Promise(resolve => setTimeout(resolve, 500));
+
             const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
             const response = await fetch(apiUrl);
-            const json = await response.json(); // 이제 데이터를 직접 배열로 받아요
+            const json = await response.json(); 
             
             if (!json || json.length === 0) throw new Error("데이터 응답 없음");
             
             const rawData = json.reverse().map(item => ({
-                // 한국 시간 문자열 뒤에 '+09:00'을 붙여서 시차 오류를 완벽히 없앴어요
                 time: Math.floor(new Date(item.candle_date_time_kst + '+09:00').getTime() / 1000),
                 open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
             }));
@@ -354,7 +339,7 @@ async function runCycle() {
     }
     
     updateUI();
-    saveDailyPerformance(); // 매 사이클마다 하루의 최종 성과를 기록장에 남겨요
+    saveDailyPerformance(); 
     localStorage.setItem('crypto_sim_v4_4', JSON.stringify(coinData));
 }
 
@@ -411,10 +396,9 @@ function updateUI() {
     });
 }
 
-// [추가] 매일매일 내 총 자산이 얼마인지 조건별로 기록하는 함수예요
 function saveDailyPerformance() {
-    const today = new Date().toLocaleDateString('ko-KR'); // 오늘 날짜
-    const conditionKey = `${emaWindow}분_${unitAmount}원`; // 현재 설정값 이름표
+    const today = new Date().toLocaleDateString('ko-KR'); 
+    const conditionKey = `${emaWindow}분_${unitAmount}원`; 
     
     let totalPortfolioValue = 0;
     coins.forEach(symbol => {
@@ -427,17 +411,15 @@ function saveDailyPerformance() {
     
     let historyList = coinData.performanceHistory[conditionKey];
     
-    // 오늘 기록이 이미 있으면 덮어쓰고(최신화), 없으면 새로 추가해요. 최대 10일치만 보관해요.
     const todayRecordIndex = historyList.findIndex(item => item.date === today);
     if (todayRecordIndex !== -1) {
         historyList[todayRecordIndex].asset = totalPortfolioValue;
     } else {
         historyList.push({ date: today, asset: totalPortfolioValue });
-        if (historyList.length > 10) historyList.shift(); // 10일이 넘으면 가장 오래된 걸 지워요
+        if (historyList.length > 10) historyList.shift(); 
     }
 }
 
-// [추가] 리포트 모달 창 열기
 function openReport() {
     document.getElementById('report-modal').style.display = 'flex';
     document.getElementById('rep-ema').innerText = emaWindow;
@@ -462,7 +444,6 @@ function openReport() {
     }
 }
 
-// [추가] 리포트 모달 창 닫기
 function closeReport() {
     document.getElementById('report-modal').style.display = 'none';
 }
