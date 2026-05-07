@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V6.0 (Backtest & Realtime)</title>
+    <title>통합 관제 스테이션 V6.2 (Individual Coin Backtest)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -28,7 +28,6 @@
         .btn-report { background: #9b59b6; color: white; margin-left: 10px; }
         .btn-scroll { background: #34495e; color: white; margin-left: 10px; border: 1px solid #7f8c8d; }
         
-        /* [추가] 모드 선택 화면을 위한 버튼 디자인이에요 */
         .btn-huge { font-size: 20px; padding: 20px 40px; margin: 10px; border-radius: 12px; width: 100%; max-width: 400px; display: block; text-align: center; }
         .btn-green { background: #27ae60; color: white; }
         .btn-purple { background: #8e44ad; color: white; }
@@ -53,9 +52,9 @@
         .modal-close { float: right; cursor: pointer; font-size: 20px; color: #e74c3c; font-weight: bold; }
         .history-item { padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; }
         
-        /* 화면 전환을 돕는 클래스예요 */
         .screen { display: none; }
         .active-screen { display: block; }
+        #screen-welcome.active-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
     </style>
 </head>
 <body>
@@ -71,20 +70,16 @@
         </div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- [추가] 1. 첫 화면 (대기실) -->
-    <!-- ========================================== -->
-    <div id="screen-welcome" class="screen active-screen" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh;">
-        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.0</h1>
+    <!-- 1. 첫 화면 (대기실) -->
+    <div id="screen-welcome" class="screen active-screen">
+        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.2</h1>
         <p style="color: #bdc3c7; margin-bottom: 40px;">원하시는 작업 모드를 선택해 주세요.</p>
         
         <button class="btn btn-huge btn-green" onclick="startRealtimeMode()">🚀 실시간 시뮬레이션 시작</button>
-        <button class="btn btn-huge btn-purple" onclick="startBacktestMode()">⏪ 과거 백테스트 시작 (성과 분석)</button>
+        <button class="btn btn-huge btn-purple" onclick="startBacktestMode()">⏪ 과거 백테스트 시작 (개별 코인 분석)</button>
     </div>
 
-    <!-- ========================================== -->
-    <!-- 2. 실시간 시뮬레이션 화면 (기존과 100% 동일) -->
-    <!-- ========================================== -->
+    <!-- 2. 실시간 시뮬레이션 화면 -->
     <div id="screen-realtime" class="screen">
         <div class="card control-panel">
             <div class="setting-item">
@@ -137,9 +132,7 @@
         <div id="charts-area"></div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- [추가] 3. 백테스트 화면 (타임머신) -->
-    <!-- ========================================== -->
+    <!-- 3. 백테스트 화면 (타임머신) -->
     <div id="screen-backtest" class="screen">
         <button class="btn btn-gray" onclick="goHome()">⬅️ 첫 화면으로 돌아가기</button>
         
@@ -158,16 +151,20 @@
         </div>
 
         <div class="card">
-            <h3>🏆 백테스트 결과 (수익률 순위 Top 30)</h3>
+            <h3>🏆 백테스트 결과 (코인별 순수익 분석)</h3>
             <div class="status-bar" id="bt-status" style="color:#f1c40f;">날짜를 선택하고 실행을 눌러주세요.</div>
             <table id="bt-result-table">
                 <thead>
                     <tr>
+                        <!-- [수정됨] 표의 제목 칸을 늘려서 각 코인마다 자리를 만들어 주었어요! -->
                         <th>순위</th>
                         <th>밴드 기간</th>
-                        <th>매매 단위 금액</th>
-                        <th>최종 총 자산 (4개 코인 합산)</th>
-                        <th>순수익</th>
+                        <th>단위 금액</th>
+                        <th>비트코인(순수익)</th>
+                        <th>이더리움(순수익)</th>
+                        <th>리플(순수익)</th>
+                        <th>도지코인(순수익)</th>
+                        <th>총 합계(순수익)</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -191,9 +188,7 @@ let scrollInterval;
 let runCycleInterval;
 let syncInterval;
 
-// -------------------------------------------------------------------
-// [추가] 화면 전환 및 제어 로직
-// -------------------------------------------------------------------
+// 화면 전환 및 제어 로직
 function switchScreen(screenId) {
     document.querySelectorAll('.screen').forEach(el => el.classList.remove('active-screen'));
     document.getElementById(screenId).classList.add('active-screen');
@@ -210,7 +205,6 @@ function startRealtimeMode() {
     runCycle(); 
     requestWakeLock();
 
-    // 첫 화면에서 실시간을 눌렀을 때만 타이머들이 작동하게 분리했어요!
     runCycleInterval = setInterval(runCycle, 600000); 
     syncInterval = setInterval(cloudSync, 3600000); 
     scrollInterval = setInterval(() => {
@@ -223,13 +217,9 @@ function startRealtimeMode() {
 
 function startBacktestMode() {
     switchScreen('screen-backtest');
-    // 오늘 날짜를 종료 날짜 기본값으로 세팅해요
     document.getElementById('bt-end-date').value = new Date().toISOString().substring(0,10);
 }
 
-// -------------------------------------------------------------------
-// 기존 실시간 로직 (절대 수정 금지 원칙 적용)
-// -------------------------------------------------------------------
 function toggleScroll() {
     isAutoScrolling = !isAutoScrolling;
     document.getElementById('scroll-btn').innerText = isAutoScrolling ? "↕️ 자동 스크롤: 켜짐" : "↕️ 자동 스크롤: 꺼짐";
@@ -254,7 +244,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function initData() {
-    if(Object.keys(coinData).length > 0) return; // 이미 초기화 됐으면 패스
+    if(Object.keys(coinData).length > 0) return; 
     const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
         coinData = JSON.parse(saved); 
@@ -525,7 +515,7 @@ function closeReport() { document.getElementById('report-modal').style.display =
 
 
 // -------------------------------------------------------------------
-// [새로 추가된 기능] 타임머신 백테스트 엔진 로직
+// 백테스트 로직 (코인별 수익률 분리 수정됨!)
 // -------------------------------------------------------------------
 async function runBacktest() {
     const startDateStr = document.getElementById('bt-start-date').value;
@@ -538,7 +528,6 @@ async function runBacktest() {
         return;
     }
 
-    // 날짜를 컴퓨터가 이해하는 숫자로 바꿔요
     const startMs = new Date(startDateStr + "T00:00:00+09:00").getTime();
     const endMs = new Date(endDateStr + "T23:59:59+09:00").getTime();
 
@@ -550,36 +539,32 @@ async function runBacktest() {
     statusDiv.innerText = "⏳ 타임머신 작동 중... 과거의 코인 메모장을 가져오고 있습니다. (최대 1~2분 소요)";
     tbody.innerHTML = '';
 
-    // 1. 모든 코인의 과거 데이터를 가져와 주머니(객체)에 모아둬요.
     let btData = {};
     for(const symbol of coins) {
         let allCandles = [];
-        // 업비트에게 요청할 끝 날짜(to)를 설정해요
         let toDateStr = new Date(endMs).toISOString().replace('.000Z', 'Z');
         
         while(true) {
             try {
                 const url = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200&to=${toDateStr}`;
                 const res = await fetch(url);
-                if(!res.ok) { await new Promise(r=>setTimeout(r, 1000)); continue; } // 서버가 바쁘면 잠깐 쉬어요
+                if(!res.ok) { await new Promise(r=>setTimeout(r, 1000)); continue; } 
                 
                 const data = await res.json();
-                if(data.length === 0) break; // 더 이상 가져올 과거가 없으면 멈춰요
+                if(data.length === 0) break; 
                 
                 allCandles.push(...data);
                 
                 const lastCandleTime = new Date(data[data.length-1].candle_date_time_utc + 'Z').getTime();
-                // 우리가 원하는 시작 날짜보다 더 옛날까지 갔거나, 가져온 개수가 200개가 안되면(마지막) 멈춰요
                 if(lastCandleTime <= startMs || data.length < 200) break;
                 
                 toDateStr = new Date(lastCandleTime).toISOString().replace('.000Z', 'Z');
-                await new Promise(r=>setTimeout(r, 200)); // 매너있게 0.2초씩 쉬면서 물어봐요
+                await new Promise(r=>setTimeout(r, 200)); 
             } catch(e) {
                 await new Promise(r=>setTimeout(r, 1000));
             }
         }
 
-        // 가져온 데이터 중에 딱 우리가 설정한 기간의 데이터만 골라내고, 시간을 순서대로 맞춰요
         btData[symbol] = allCandles.filter(c => {
             const t = new Date(c.candle_date_time_utc + 'Z').getTime();
             return t >= startMs && t <= endMs;
@@ -587,43 +572,42 @@ async function runBacktest() {
     }
 
     statusDiv.innerText = "🧠 메모장을 다 가져왔습니다! 30가지 모의고사를 시작합니다...";
-    await new Promise(r=>setTimeout(r, 100)); // 화면 글씨가 바뀔 틈을 줘요
+    await new Promise(r=>setTimeout(r, 100)); 
 
-    // 2. 30가지 조합(밴드 5개 x 금액 6개)을 준비해요
     const periods = [60, 120, 180, 240, 360];
     const units = [5000, 10000, 15000, 20000, 25000, 30000];
     let results = [];
-    const baseTotalAsset = 8000000; // 기초 자산: 4개 코인 * (현금 100만 + 코인 100만) = 800만원 시작
+    
+    // [수정됨] 각 코인마다 시작할 때 자본금이 200만원(현금 100만 + 코인 100만치)이에요.
+    const basePerCoinAsset = 2000000; 
 
-    // 모의고사 시작!
     for(let p of periods) {
         for(let u of units) {
-            let combinationTotalAsset = 0; // 이 조합이 4개 코인에서 번 돈의 합계예요
+            // [수정됨] 4개 합계를 뭉뚱그려 담던 상자를 버리고, 코인별 성적을 따로 담을 서랍장(객체)을 만들었어요!
+            let combiResult = { period: p, unit: u, coinsProfit: {}, totalProfit: 0 };
             
             for(let symbol of coins) {
                 const candles = btData[symbol];
                 if(candles.length === 0) continue;
 
                 let bt_balance = 1000000;
-                let bt_coin = 1000000 / candles[0].trade_price; // 첫 날 가격으로 100만원치 사두고 시작해요
+                let bt_coin = 1000000 / candles[0].trade_price; 
 
                 const closes = candles.map(c => c.trade_price);
                 const emaCount = Math.floor(p / 10);
                 const emaValues = calculateEMA(closes, emaCount);
                 const stdValues = calculateRollingStd(closes, emaCount, emaCount);
 
-                // 캔들을 하나하나 지나가면서 매매 조건에 맞는지 확인해요
                 for(let i = emaCount - 1; i < candles.length; i++) {
                     const curPrice = candles[i].trade_price;
                     const mid = emaValues[i];
                     const std = stdValues[i];
-                    if(isNaN(std)) continue; // 밴드가 그려지기 전에는 패스
+                    if(isNaN(std)) continue; 
 
                     const up3 = mid + std * 3;
                     const up15 = mid + std * 1.5;
                     const down15 = mid - std * 1.5;
 
-                    // 파트너님의 매매 로직과 100% 동일합니다!
                     if (curPrice >= up3) {
                         let sellAmt = Math.min(bt_coin * curPrice, u * 2);
                         if(sellAmt > 0) { bt_balance += sellAmt; bt_coin -= sellAmt / curPrice; }
@@ -639,34 +623,45 @@ async function runBacktest() {
                     }
                 }
                 
-                // 모의고사 끝! 이 코인에서 남은 현금과 코인의 마지막 가격을 더해요
+                // [수정됨] 해당 코인이 모의고사를 끝내면, 200만원을 빼서 '순수하게 번 돈(순수익)'만 서랍장에 넣어요.
                 const finalPrice = candles[candles.length - 1].trade_price;
-                combinationTotalAsset += bt_balance + (bt_coin * finalPrice);
+                const finalAsset = bt_balance + (bt_coin * finalPrice);
+                const pureProfit = finalAsset - basePerCoinAsset;
+                
+                combiResult.coinsProfit[symbol] = pureProfit;
+                combiResult.totalProfit += pureProfit; // 줄 세우기(랭킹)를 위해 합계도 계산은 해둬요.
             }
-            // 4개 코인을 모두 돌렸으니 성적표를 저장해요
-            results.push({ period: p, unit: u, finalAsset: combinationTotalAsset });
+            results.push(combiResult);
         }
     }
 
-    // 3. 성적표를 1등부터 줄을 세워서 화면에 뿌려줘요
-    results.sort((a, b) => b.finalAsset - a.finalAsset); // 돈을 많이 번 순서(내림차순)로 정렬
+    // 랭킹은 4개 코인 합산 수익이 제일 높은 순서로 정렬해요.
+    results.sort((a, b) => b.totalProfit - a.totalProfit); 
     
+    // [수정됨] 표에 그릴 때 예쁜 색깔로 바꿔주는 작은 기계(함수)예요.
+    const formatProfit = (val) => {
+        if(val === undefined) return `<td>-</td>`;
+        const color = val >= 0 ? '#2ecc71' : '#e74c3c'; 
+        return `<td style="color:${color}; font-weight:bold;">${Math.floor(val).toLocaleString()}원</td>`;
+    };
+
     results.forEach((res, index) => {
-        const profit = res.finalAsset - baseTotalAsset;
-        const profitColor = profit >= 0 ? '#2ecc71' : '#e74c3c'; // 수익이면 초록색, 손해면 빨간색
-        
+        // [수정됨] 이제 각 코인들의 서랍장을 열어서 표의 각 칸에 쏙쏙 집어넣어요.
         tbody.innerHTML += `
             <tr>
                 <td style="font-weight:bold; color:var(--main-blue);">${index + 1}위</td>
                 <td>${res.period}분</td>
                 <td>${res.unit.toLocaleString()}원</td>
-                <td style="font-weight:bold;">${Math.floor(res.finalAsset).toLocaleString()}원</td>
-                <td style="color:${profitColor}; font-weight:bold;">${Math.floor(profit).toLocaleString()}원</td>
+                ${formatProfit(res.coinsProfit['KRW-BTC'])}
+                ${formatProfit(res.coinsProfit['KRW-ETH'])}
+                ${formatProfit(res.coinsProfit['KRW-XRP'])}
+                ${formatProfit(res.coinsProfit['KRW-DOGE'])}
+                ${formatProfit(res.totalProfit)}
             </tr>
         `;
     });
 
-    statusDiv.innerText = "🎉 백테스트가 완료되었습니다! 결과를 확인해 보세요.";
+    statusDiv.innerText = "🎉 백테스트가 완료되었습니다! 코인별 성적을 비교해 보세요.";
     statusDiv.style.color = "#2ecc71";
 }
 </script>
