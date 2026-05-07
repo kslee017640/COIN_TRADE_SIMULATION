@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V5.5 (Load Monitor & KST Time)</title>
+    <title>통합 관제 스테이션 V6.0 (Backtest & Realtime)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -21,13 +21,18 @@
         .control-panel { display: flex; flex-wrap: wrap; gap: 15px; background: #2c3e50; color: white; align-items: flex-end; }
         .setting-item { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
         label { font-size: 11px; color: #bdc3c7; font-weight: bold; }
-        select { padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #34495e; color: white; font-weight: bold; }
+        select, input[type="date"] { padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #34495e; color: white; font-weight: bold; }
         .btn { cursor: pointer; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
         .btn-sync { background: var(--main-blue); color: white; }
         .btn-reset { background: #e67e22; color: white; margin-left: 10px; }
-        
         .btn-report { background: #9b59b6; color: white; margin-left: 10px; }
         .btn-scroll { background: #34495e; color: white; margin-left: 10px; border: 1px solid #7f8c8d; }
+        
+        /* [추가] 모드 선택 화면을 위한 버튼 디자인이에요 */
+        .btn-huge { font-size: 20px; padding: 20px 40px; margin: 10px; border-radius: 12px; width: 100%; max-width: 400px; display: block; text-align: center; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-purple { background: #8e44ad; color: white; }
+        .btn-gray { background: #7f8c8d; color: white; margin-bottom: 20px; }
 
         table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--card-color); color: var(--text-color); }
         th, td { border: 1px solid var(--border-color); padding: 12px; text-align: center; }
@@ -47,6 +52,10 @@
         .modal-content { background: var(--card-color); padding: 20px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border-color); max-height: 80vh; overflow-y: auto; }
         .modal-close { float: right; cursor: pointer; font-size: 20px; color: #e74c3c; font-weight: bold; }
         .history-item { padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; }
+        
+        /* 화면 전환을 돕는 클래스예요 */
+        .screen { display: none; }
+        .active-screen { display: block; }
     </style>
 </head>
 <body>
@@ -62,55 +71,109 @@
         </div>
     </div>
 
-    <div class="card control-panel">
-        <div class="setting-item">
-            <label>⚙️ 볼린저 밴드 기간 설정 (60분 단위)</label>
-            <select id="ema-period" onchange="changeParameters()">
-                <option value="60">60분 (1시간)</option>
-                <option value="120" selected>120분 (2시간)</option>
-                <option value="180">180분 (3시간)</option>
-                <option value="240">240분 (4시간)</option>
-                <option value="360">360분 (6시간)</option>
-            </select>
-        </div>
-        <div class="setting-item">
-            <label>💰 1단위 매매 금액 설정</label>
-            <select id="unit-amount" onchange="changeUnit()">
-                <option value="5000" selected>5,000원</option>
-                <option value="10000">10,000원</option>
-                <option value="15000">15,000원</option>
-                <option value="20000">20,000원</option>
-                <option value="25000">25,000원</option>
-                <option value="30000">30,000원</option>
-            </select>
-        </div>
-        <div style="display: flex; align-items: center;">
-            <span id="wake-lock-status">📱 화면 유지 준비 중...</span>
-            <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
-            <button class="btn btn-report" onclick="openReport()">📊 실적 리포트</button>
-            <button class="btn btn-scroll" id="scroll-btn" onclick="toggleScroll()">↕️ 자동 스크롤: 켜짐</button>
-            <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
-        </div>
+    <!-- ========================================== -->
+    <!-- [추가] 1. 첫 화면 (대기실) -->
+    <!-- ========================================== -->
+    <div id="screen-welcome" class="screen active-screen" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh;">
+        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.0</h1>
+        <p style="color: #bdc3c7; margin-bottom: 40px;">원하시는 작업 모드를 선택해 주세요.</p>
+        
+        <button class="btn btn-huge btn-green" onclick="startRealtimeMode()">🚀 실시간 시뮬레이션 시작</button>
+        <button class="btn btn-huge btn-purple" onclick="startBacktestMode()">⏪ 과거 백테스트 시작 (성과 분석)</button>
     </div>
 
-    <div class="card">
-        <h3>📊 통합 실시간 잔고 (시작: 현금 100만 + 코인 100만)</h3>
-        <div class="status-bar" id="sync-status">연결 대기 중...</div>
-        <table id="result-table">
-            <thead>
-                <tr>
-                    <th>종목</th>
-                    <th>현재가</th>
-                    <th>보유 현금</th>
-                    <th>보유 코인 (평가금액)</th>
-                    <th>총 자산 (현금+코인)</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+    <!-- ========================================== -->
+    <!-- 2. 실시간 시뮬레이션 화면 (기존과 100% 동일) -->
+    <!-- ========================================== -->
+    <div id="screen-realtime" class="screen">
+        <div class="card control-panel">
+            <div class="setting-item">
+                <label>⚙️ 볼린저 밴드 기간 설정 (60분 단위)</label>
+                <select id="ema-period" onchange="changeParameters()">
+                    <option value="60">60분 (1시간)</option>
+                    <option value="120" selected>120분 (2시간)</option>
+                    <option value="180">180분 (3시간)</option>
+                    <option value="240">240분 (4시간)</option>
+                    <option value="360">360분 (6시간)</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>💰 1단위 매매 금액 설정</label>
+                <select id="unit-amount" onchange="changeUnit()">
+                    <option value="5000" selected>5,000원</option>
+                    <option value="10000">10,000원</option>
+                    <option value="15000">15,000원</option>
+                    <option value="20000">20,000원</option>
+                    <option value="25000">25,000원</option>
+                    <option value="30000">30,000원</option>
+                </select>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <span id="wake-lock-status">📱 화면 유지 준비 중...</span>
+                <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
+                <button class="btn btn-report" onclick="openReport()">📊 실적 리포트</button>
+                <button class="btn btn-scroll" id="scroll-btn" onclick="toggleScroll()">↕️ 자동 스크롤: 켜짐</button>
+                <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>📊 통합 실시간 잔고 (시작: 현금 100만 + 코인 100만)</h3>
+            <div class="status-bar" id="sync-status">연결 대기 중...</div>
+            <table id="result-table">
+                <thead>
+                    <tr>
+                        <th>종목</th>
+                        <th>현재가</th>
+                        <th>보유 현금</th>
+                        <th>보유 코인 (평가금액)</th>
+                        <th>총 자산 (현금+코인)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="charts-area"></div>
     </div>
 
-    <div id="charts-area"></div>
+    <!-- ========================================== -->
+    <!-- [추가] 3. 백테스트 화면 (타임머신) -->
+    <!-- ========================================== -->
+    <div id="screen-backtest" class="screen">
+        <button class="btn btn-gray" onclick="goHome()">⬅️ 첫 화면으로 돌아가기</button>
+        
+        <div class="card control-panel">
+            <div class="setting-item">
+                <label>📅 시작 날짜</label>
+                <input type="date" id="bt-start-date">
+            </div>
+            <div class="setting-item">
+                <label>📅 종료 날짜</label>
+                <input type="date" id="bt-end-date">
+            </div>
+            <div style="display: flex; align-items: center;">
+                <button class="btn btn-purple" onclick="runBacktest()">▶️ 최적의 조합 찾기 (테스트 실행)</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🏆 백테스트 결과 (수익률 순위 Top 30)</h3>
+            <div class="status-bar" id="bt-status" style="color:#f1c40f;">날짜를 선택하고 실행을 눌러주세요.</div>
+            <table id="bt-result-table">
+                <thead>
+                    <tr>
+                        <th>순위</th>
+                        <th>밴드 기간</th>
+                        <th>매매 단위 금액</th>
+                        <th>최종 총 자산 (4개 코인 합산)</th>
+                        <th>순수익</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
 
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzk3RlYiDQtn0_iyDwHIpAGYoVOM3YY8ELyJ-GXCvhtAzDWF2QOM-uBnBNRkln_RjLjSw/exec";
@@ -124,14 +187,49 @@ let wakeLock = null;
 
 let isAutoScrolling = true;
 let scrollStep = 0.5; 
+let scrollInterval;
+let runCycleInterval;
+let syncInterval;
 
-setInterval(() => {
-    if (!isAutoScrolling) return;
-    window.scrollBy(0, scrollStep);
-    if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 2) scrollStep = -0.5;
-    else if (window.scrollY <= 0) scrollStep = 0.5;
-}, 50);
+// -------------------------------------------------------------------
+// [추가] 화면 전환 및 제어 로직
+// -------------------------------------------------------------------
+function switchScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(el => el.classList.remove('active-screen'));
+    document.getElementById(screenId).classList.add('active-screen');
+}
 
+function goHome() {
+    switchScreen('screen-welcome');
+}
+
+function startRealtimeMode() {
+    switchScreen('screen-realtime');
+    initData();
+    initCharts();
+    runCycle(); 
+    requestWakeLock();
+
+    // 첫 화면에서 실시간을 눌렀을 때만 타이머들이 작동하게 분리했어요!
+    runCycleInterval = setInterval(runCycle, 600000); 
+    syncInterval = setInterval(cloudSync, 3600000); 
+    scrollInterval = setInterval(() => {
+        if (!isAutoScrolling) return;
+        window.scrollBy(0, scrollStep);
+        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 2) scrollStep = -0.5;
+        else if (window.scrollY <= 0) scrollStep = 0.5;
+    }, 50);
+}
+
+function startBacktestMode() {
+    switchScreen('screen-backtest');
+    // 오늘 날짜를 종료 날짜 기본값으로 세팅해요
+    document.getElementById('bt-end-date').value = new Date().toISOString().substring(0,10);
+}
+
+// -------------------------------------------------------------------
+// 기존 실시간 로직 (절대 수정 금지 원칙 적용)
+// -------------------------------------------------------------------
 function toggleScroll() {
     isAutoScrolling = !isAutoScrolling;
     document.getElementById('scroll-btn').innerText = isAutoScrolling ? "↕️ 자동 스크롤: 켜짐" : "↕️ 자동 스크롤: 꺼짐";
@@ -148,14 +246,15 @@ async function requestWakeLock() {
         document.getElementById('wake-lock-status').innerText = "🚫 유지 불가";
     }
 }
-document.addEventListener('click', requestWakeLock);
+document.addEventListener('click', () => { if(document.getElementById('screen-realtime').classList.contains('active-screen')) requestWakeLock(); });
 document.addEventListener('visibilitychange', () => {
-    if (wakeLock !== null && document.visibilityState === 'visible') {
+    if (wakeLock !== null && document.visibilityState === 'visible' && document.getElementById('screen-realtime').classList.contains('active-screen')) {
         requestWakeLock();
     }
 });
 
 function initData() {
+    if(Object.keys(coinData).length > 0) return; // 이미 초기화 됐으면 패스
     const saved = localStorage.getItem('crypto_sim_v4_4');
     if (saved) { 
         coinData = JSON.parse(saved); 
@@ -167,9 +266,7 @@ function initData() {
         if (!coinData.performanceHistory) coinData.performanceHistory = {};
     } else { 
         coins.forEach(s => {
-            coinData[s] = {
-                balance: 1000000, coin: 0, lastPrice: 0, logs: [], markers: [], isNewAccount: true 
-            };
+            coinData[s] = { balance: 1000000, coin: 0, lastPrice: 0, logs: [], markers: [], isNewAccount: true };
         });
         coinData.globalUnit = 5000;
         coinData.performanceHistory = {};
@@ -197,6 +294,7 @@ async function cloudSync() {
 function manualSync() { cloudSync(); alert("데이터를 전송했습니다."); }
 
 function initCharts() {
+    if(Object.keys(chartObjects).length > 0) return;
     const area = document.getElementById('charts-area');
     coins.forEach(symbol => {
         const title = document.createElement('div');
@@ -212,25 +310,16 @@ function initCharts() {
         area.appendChild(logArea);
 
         const chart = LightweightCharts.createChart(container, {
-            layout: { 
-                background: { type: 'solid', color: '#1e1e1e' },
-                textColor: '#d1d4dc' 
-            },
-            grid: { 
-                vertLines: { color: '#333' }, 
-                horzLines: { color: '#333' } 
-            },
+            layout: { background: { type: 'solid', color: '#1e1e1e' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } },
             localization: {
-                // 마우스를 올렸을 때 나타나는 풍선 도움말의 시간을 한국시간으로 고정해요.
                 timeFormatter: time => {
                     const date = new Date(time * 1000);
                     return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit' });
                 }
             },
             timeScale: { 
-                timeVisible: true, 
-                secondsVisible: false,
-                // [수정된 부분] 차트 맨 아래 눈금에 나오는 시간도 무조건 한국시간(서울)으로 못 박았어요!
+                timeVisible: true, secondsVisible: false,
                 tickMarkFormatter: (time, tickMarkType, locale) => {
                     const date = new Date(time * 1000);
                     return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit' });
@@ -282,37 +371,26 @@ function changeUnit() {
 
 async function runCycle() {
     for (const symbol of coins) {
-        // 업비트 서버가 놀라지 않게 1.5초 쉬어줍니다.
         await new Promise(resolve => setTimeout(resolve, 1500));
-
         let rawData = null;
         let attempt = 1;
 
-        // [수정된 부분] 포기하지 않아요! 데이터가 제대로 들어올 때까지 무한정 감시하며 다시 불러옵니다.
         while (!rawData) {
             try {
                 const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
                 const response = await fetch(apiUrl);
-                
-                if (!response.ok) {
-                    throw new Error(`접속 불량: ${response.status}`);
-                }
-
+                if (!response.ok) throw new Error(`접속 불량: ${response.status}`);
                 const text = await response.text();
                 const json = JSON.parse(text); 
                 
                 if (json && json.length > 0) {
                     rawData = json.reverse().map(item => ({
-                        // [수정된 부분] 한국 시간이 아닌 정확한 세계 기준시(UTC)를 가져와서 9시간 차이를 없앴어요!
                         time: Math.floor(new Date(item.candle_date_time_utc + 'Z').getTime() / 1000),
                         open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
                     }));
-                } else {
-                    throw new Error("빈 데이터");
-                }
+                } else { throw new Error("빈 데이터"); }
             } catch (err) {
                 console.warn(`${symbol} 차트 데이터를 못 가져왔습니다. 3초 뒤 다시 시도합니다! (시도 횟수: ${attempt})`);
-                // 실패하면 3초 쉬고 다시 처음부터 시도해요. 차트가 안 뜰 수가 없겠죠?
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 attempt++;
             }
@@ -355,15 +433,10 @@ async function runCycle() {
             const up15 = mid + std * 1.5;
             const down15 = mid - std * 1.5;
 
-            if (curPrice >= up3) {
-                execute(symbol, 'sell', unitAmount * 2, curPrice);
-            } else if (curPrice >= up15) {
-                execute(symbol, 'sell', unitAmount, curPrice);
-            } else if (curPrice <= down15) {
-                execute(symbol, 'buy', unitAmount * 2, curPrice);
-            } else if (curPrice <= mid) {
-                execute(symbol, 'buy', unitAmount, curPrice);
-            }
+            if (curPrice >= up3) execute(symbol, 'sell', unitAmount * 2, curPrice);
+            else if (curPrice >= up15) execute(symbol, 'sell', unitAmount, curPrice);
+            else if (curPrice <= down15) execute(symbol, 'buy', unitAmount * 2, curPrice);
+            else if (curPrice <= mid) execute(symbol, 'buy', unitAmount, curPrice);
 
         } catch (e) { console.error(symbol + " 차트 그리기 오류:", e); }
     }
@@ -378,26 +451,12 @@ function execute(symbol, type, krw, price) {
     if (type === 'buy' && data.balance >= krw) {
         data.balance -= krw; data.coin += krw / price;
         addLog(symbol, `🟢 매수: ${krw.toLocaleString()}원 (가격: ${price.toLocaleString()})`);
-        
-        data.markers.push({
-            time: data.lastTime,
-            position: 'belowBar',
-            color: '#2ecc71',
-            shape: 'star',
-            text: '매수'
-        });
+        data.markers.push({ time: data.lastTime, position: 'belowBar', color: '#2ecc71', shape: 'star', text: '매수' });
     } else if (type === 'sell' && data.coin > 0) {
         const sellAmt = Math.min(data.coin * price, krw);
         data.balance += sellAmt; data.coin -= sellAmt / price;
         addLog(symbol, `🔴 매도: ${Math.floor(sellAmt).toLocaleString()}원 (가격: ${price.toLocaleString()})`);
-        
-        data.markers.push({
-            time: data.lastTime,
-            position: 'aboveBar',
-            color: '#e74c3c',
-            shape: 'star',
-            text: '매도'
-        });
+        data.markers.push({ time: data.lastTime, position: 'aboveBar', color: '#e74c3c', shape: 'star', text: '매도' });
     }
 }
 
@@ -431,20 +490,14 @@ function saveDailyPerformance() {
     const conditionKey = `${emaWindow}분_${unitAmount}원`; 
     
     let totalPortfolioValue = 0;
-    coins.forEach(symbol => {
-        totalPortfolioValue += Math.floor(coinData[symbol].balance + (coinData[symbol].coin * coinData[symbol].lastPrice));
-    });
+    coins.forEach(symbol => { totalPortfolioValue += Math.floor(coinData[symbol].balance + (coinData[symbol].coin * coinData[symbol].lastPrice)); });
 
-    if (!coinData.performanceHistory[conditionKey]) {
-        coinData.performanceHistory[conditionKey] = [];
-    }
-    
+    if (!coinData.performanceHistory[conditionKey]) coinData.performanceHistory[conditionKey] = [];
     let historyList = coinData.performanceHistory[conditionKey];
     
     const todayRecordIndex = historyList.findIndex(item => item.date === today);
-    if (todayRecordIndex !== -1) {
-        historyList[todayRecordIndex].asset = totalPortfolioValue;
-    } else {
+    if (todayRecordIndex !== -1) historyList[todayRecordIndex].asset = totalPortfolioValue;
+    else {
         historyList.push({ date: today, asset: totalPortfolioValue });
         if (historyList.length > 10) historyList.shift(); 
     }
@@ -460,31 +513,162 @@ function openReport() {
     listDiv.innerHTML = '';
     
     const historyList = coinData.performanceHistory[conditionKey] || [];
-    if(historyList.length === 0) {
-        listDiv.innerHTML = '<p style="text-align:center; color:#7f8c8d;">아직 기록된 실적이 없습니다. 프로그램을 계속 켜두세요!</p>';
-    } else {
+    if(historyList.length === 0) listDiv.innerHTML = '<p style="text-align:center; color:#7f8c8d;">아직 기록된 실적이 없습니다. 프로그램을 계속 켜두세요!</p>';
+    else {
         historyList.slice().reverse().forEach(record => {
-            listDiv.innerHTML += `
-                <div class="history-item">
-                    <span>📅 ${record.date}</span>
-                    <span style="color:#2ecc71; font-weight:bold;">${record.asset.toLocaleString()} 원</span>
-                </div>
-            `;
+            listDiv.innerHTML += `<div class="history-item"><span>📅 ${record.date}</span><span style="color:#2ecc71; font-weight:bold;">${record.asset.toLocaleString()} 원</span></div>`;
         });
     }
 }
 
-function closeReport() {
-    document.getElementById('report-modal').style.display = 'none';
+function closeReport() { document.getElementById('report-modal').style.display = 'none'; }
+
+
+// -------------------------------------------------------------------
+// [새로 추가된 기능] 타임머신 백테스트 엔진 로직
+// -------------------------------------------------------------------
+async function runBacktest() {
+    const startDateStr = document.getElementById('bt-start-date').value;
+    const endDateStr = document.getElementById('bt-end-date').value;
+    const statusDiv = document.getElementById('bt-status');
+    const tbody = document.querySelector('#bt-result-table tbody');
+
+    if(!startDateStr || !endDateStr) {
+        alert("시작 날짜와 종료 날짜를 모두 선택해 주세요!");
+        return;
+    }
+
+    // 날짜를 컴퓨터가 이해하는 숫자로 바꿔요
+    const startMs = new Date(startDateStr + "T00:00:00+09:00").getTime();
+    const endMs = new Date(endDateStr + "T23:59:59+09:00").getTime();
+
+    if(startMs >= endMs) {
+        alert("종료 날짜가 시작 날짜보다 빨라요! 날짜를 다시 확인해 주세요.");
+        return;
+    }
+
+    statusDiv.innerText = "⏳ 타임머신 작동 중... 과거의 코인 메모장을 가져오고 있습니다. (최대 1~2분 소요)";
+    tbody.innerHTML = '';
+
+    // 1. 모든 코인의 과거 데이터를 가져와 주머니(객체)에 모아둬요.
+    let btData = {};
+    for(const symbol of coins) {
+        let allCandles = [];
+        // 업비트에게 요청할 끝 날짜(to)를 설정해요
+        let toDateStr = new Date(endMs).toISOString().replace('.000Z', 'Z');
+        
+        while(true) {
+            try {
+                const url = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200&to=${toDateStr}`;
+                const res = await fetch(url);
+                if(!res.ok) { await new Promise(r=>setTimeout(r, 1000)); continue; } // 서버가 바쁘면 잠깐 쉬어요
+                
+                const data = await res.json();
+                if(data.length === 0) break; // 더 이상 가져올 과거가 없으면 멈춰요
+                
+                allCandles.push(...data);
+                
+                const lastCandleTime = new Date(data[data.length-1].candle_date_time_utc + 'Z').getTime();
+                // 우리가 원하는 시작 날짜보다 더 옛날까지 갔거나, 가져온 개수가 200개가 안되면(마지막) 멈춰요
+                if(lastCandleTime <= startMs || data.length < 200) break;
+                
+                toDateStr = new Date(lastCandleTime).toISOString().replace('.000Z', 'Z');
+                await new Promise(r=>setTimeout(r, 200)); // 매너있게 0.2초씩 쉬면서 물어봐요
+            } catch(e) {
+                await new Promise(r=>setTimeout(r, 1000));
+            }
+        }
+
+        // 가져온 데이터 중에 딱 우리가 설정한 기간의 데이터만 골라내고, 시간을 순서대로 맞춰요
+        btData[symbol] = allCandles.filter(c => {
+            const t = new Date(c.candle_date_time_utc + 'Z').getTime();
+            return t >= startMs && t <= endMs;
+        }).reverse();
+    }
+
+    statusDiv.innerText = "🧠 메모장을 다 가져왔습니다! 30가지 모의고사를 시작합니다...";
+    await new Promise(r=>setTimeout(r, 100)); // 화면 글씨가 바뀔 틈을 줘요
+
+    // 2. 30가지 조합(밴드 5개 x 금액 6개)을 준비해요
+    const periods = [60, 120, 180, 240, 360];
+    const units = [5000, 10000, 15000, 20000, 25000, 30000];
+    let results = [];
+    const baseTotalAsset = 8000000; // 기초 자산: 4개 코인 * (현금 100만 + 코인 100만) = 800만원 시작
+
+    // 모의고사 시작!
+    for(let p of periods) {
+        for(let u of units) {
+            let combinationTotalAsset = 0; // 이 조합이 4개 코인에서 번 돈의 합계예요
+            
+            for(let symbol of coins) {
+                const candles = btData[symbol];
+                if(candles.length === 0) continue;
+
+                let bt_balance = 1000000;
+                let bt_coin = 1000000 / candles[0].trade_price; // 첫 날 가격으로 100만원치 사두고 시작해요
+
+                const closes = candles.map(c => c.trade_price);
+                const emaCount = Math.floor(p / 10);
+                const emaValues = calculateEMA(closes, emaCount);
+                const stdValues = calculateRollingStd(closes, emaCount, emaCount);
+
+                // 캔들을 하나하나 지나가면서 매매 조건에 맞는지 확인해요
+                for(let i = emaCount - 1; i < candles.length; i++) {
+                    const curPrice = candles[i].trade_price;
+                    const mid = emaValues[i];
+                    const std = stdValues[i];
+                    if(isNaN(std)) continue; // 밴드가 그려지기 전에는 패스
+
+                    const up3 = mid + std * 3;
+                    const up15 = mid + std * 1.5;
+                    const down15 = mid - std * 1.5;
+
+                    // 파트너님의 매매 로직과 100% 동일합니다!
+                    if (curPrice >= up3) {
+                        let sellAmt = Math.min(bt_coin * curPrice, u * 2);
+                        if(sellAmt > 0) { bt_balance += sellAmt; bt_coin -= sellAmt / curPrice; }
+                    } else if (curPrice >= up15) {
+                        let sellAmt = Math.min(bt_coin * curPrice, u);
+                        if(sellAmt > 0) { bt_balance += sellAmt; bt_coin -= sellAmt / curPrice; }
+                    } else if (curPrice <= down15) {
+                        let buyAmt = u * 2;
+                        if(bt_balance >= buyAmt) { bt_balance -= buyAmt; bt_coin += buyAmt / curPrice; }
+                    } else if (curPrice <= mid) {
+                        let buyAmt = u;
+                        if(bt_balance >= buyAmt) { bt_balance -= buyAmt; bt_coin += buyAmt / curPrice; }
+                    }
+                }
+                
+                // 모의고사 끝! 이 코인에서 남은 현금과 코인의 마지막 가격을 더해요
+                const finalPrice = candles[candles.length - 1].trade_price;
+                combinationTotalAsset += bt_balance + (bt_coin * finalPrice);
+            }
+            // 4개 코인을 모두 돌렸으니 성적표를 저장해요
+            results.push({ period: p, unit: u, finalAsset: combinationTotalAsset });
+        }
+    }
+
+    // 3. 성적표를 1등부터 줄을 세워서 화면에 뿌려줘요
+    results.sort((a, b) => b.finalAsset - a.finalAsset); // 돈을 많이 번 순서(내림차순)로 정렬
+    
+    results.forEach((res, index) => {
+        const profit = res.finalAsset - baseTotalAsset;
+        const profitColor = profit >= 0 ? '#2ecc71' : '#e74c3c'; // 수익이면 초록색, 손해면 빨간색
+        
+        tbody.innerHTML += `
+            <tr>
+                <td style="font-weight:bold; color:var(--main-blue);">${index + 1}위</td>
+                <td>${res.period}분</td>
+                <td>${res.unit.toLocaleString()}원</td>
+                <td style="font-weight:bold;">${Math.floor(res.finalAsset).toLocaleString()}원</td>
+                <td style="color:${profitColor}; font-weight:bold;">${Math.floor(profit).toLocaleString()}원</td>
+            </tr>
+        `;
+    });
+
+    statusDiv.innerText = "🎉 백테스트가 완료되었습니다! 결과를 확인해 보세요.";
+    statusDiv.style.color = "#2ecc71";
 }
-
-setInterval(runCycle, 600000); 
-setInterval(cloudSync, 3600000); 
-
-initData();
-initCharts();
-runCycle(); 
-requestWakeLock();
 </script>
 </body>
 </html>
