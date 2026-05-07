@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V6.2 (Individual Coin Backtest)</title>
+    <title>통합 관제 스테이션 V6.3 (Live Multi-Sim & Navigation)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -47,8 +47,9 @@
 
         #toast { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #27ae60; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 
-        #report-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; }
-        .modal-content { background: var(--card-color); padding: 20px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border-color); max-height: 80vh; overflow-y: auto; }
+        /* 보고서 창 디자인 */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; }
+        .modal-content { background: var(--card-color); padding: 20px; border-radius: 12px; width: 95%; max-width: 800px; border: 1px solid var(--border-color); max-height: 85vh; overflow-y: auto; }
         .modal-close { float: right; cursor: pointer; font-size: 20px; color: #e74c3c; font-weight: bold; }
         .history-item { padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; }
         
@@ -61,8 +62,9 @@
 
     <div id="toast">✅ 서버 데이터를 성공적으로 불러왔습니다!</div>
 
-    <div id="report-modal">
-        <div class="modal-content">
+    <!-- 기존: 단일 조합 10일 성과 리포트 창 -->
+    <div id="report-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
             <span class="modal-close" onclick="closeReport()">X</span>
             <h3 style="margin-top:0;">📊 조건별 10일 성과 리포트</h3>
             <p style="font-size: 12px; color: #bdc3c7;">현재 설정 (기간: <span id="rep-ema"></span>분 / 금액: <span id="rep-unit"></span>원)</p>
@@ -70,9 +72,35 @@
         </div>
     </div>
 
+    <!-- [추가됨] 실시간 30조합 레이스 현황 창 -->
+    <div id="multi-sim-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeMultiSimReport()">X</span>
+            <h3 style="margin-top:0;">🏆 전체 30조합 실시간 레이스 현황</h3>
+            <p style="font-size: 12px; color: #bdc3c7;">현재 백그라운드에서 실시간으로 달리고 있는 30가지 전략의 순위입니다.</p>
+            <div style="overflow-x: auto;">
+                <table id="multi-sim-table">
+                    <thead>
+                        <tr>
+                            <th>순위</th>
+                            <th>밴드 기간</th>
+                            <th>단위 금액</th>
+                            <th>비트코인(순수익)</th>
+                            <th>이더리움(순수익)</th>
+                            <th>리플(순수익)</th>
+                            <th>도지코인(순수익)</th>
+                            <th>총 합계(순수익)</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. 첫 화면 (대기실) -->
     <div id="screen-welcome" class="screen active-screen">
-        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.2</h1>
+        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.3</h1>
         <p style="color: #bdc3c7; margin-bottom: 40px;">원하시는 작업 모드를 선택해 주세요.</p>
         
         <button class="btn btn-huge btn-green" onclick="startRealtimeMode()">🚀 실시간 시뮬레이션 시작</button>
@@ -81,9 +109,12 @@
 
     <!-- 2. 실시간 시뮬레이션 화면 -->
     <div id="screen-realtime" class="screen">
+        <!-- [추가됨] 실시간 화면에도 첫 화면으로 돌아가는 문(버튼)을 만들었어요! -->
+        <button class="btn btn-gray" onclick="goHome()">⬅️ 첫 화면으로 돌아가기</button>
+
         <div class="card control-panel">
             <div class="setting-item">
-                <label>⚙️ 볼린저 밴드 기간 설정 (60분 단위)</label>
+                <label>⚙️ 메인 볼린저 밴드 기간 설정</label>
                 <select id="ema-period" onchange="changeParameters()">
                     <option value="60">60분 (1시간)</option>
                     <option value="120" selected>120분 (2시간)</option>
@@ -93,7 +124,7 @@
                 </select>
             </div>
             <div class="setting-item">
-                <label>💰 1단위 매매 금액 설정</label>
+                <label>💰 메인 1단위 매매 금액</label>
                 <select id="unit-amount" onchange="changeUnit()">
                     <option value="5000" selected>5,000원</option>
                     <option value="10000">10,000원</option>
@@ -103,17 +134,19 @@
                     <option value="30000">30,000원</option>
                 </select>
             </div>
-            <div style="display: flex; align-items: center;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <span id="wake-lock-status">📱 화면 유지 준비 중...</span>
                 <button class="btn btn-sync" onclick="manualSync()">☁️ 클라우드 백업</button>
-                <button class="btn btn-report" onclick="openReport()">📊 실적 리포트</button>
+                <button class="btn btn-report" onclick="openReport()">📊 메인 실적 리포트</button>
+                <!-- [추가됨] 30명의 투명 투자가들 성적을 보는 버튼이에요! -->
+                <button class="btn btn-purple" onclick="openMultiSimReport()">🏆 전체 조합 실시간 랭킹</button>
                 <button class="btn btn-scroll" id="scroll-btn" onclick="toggleScroll()">↕️ 자동 스크롤: 켜짐</button>
                 <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
             </div>
         </div>
 
         <div class="card">
-            <h3>📊 통합 실시간 잔고 (시작: 현금 100만 + 코인 100만)</h3>
+            <h3>📊 메인 화면 실시간 잔고 (선택된 조합 기준)</h3>
             <div class="status-bar" id="sync-status">연결 대기 중...</div>
             <table id="result-table">
                 <thead>
@@ -156,7 +189,6 @@
             <table id="bt-result-table">
                 <thead>
                     <tr>
-                        <!-- [수정됨] 표의 제목 칸을 늘려서 각 코인마다 자리를 만들어 주었어요! -->
                         <th>순위</th>
                         <th>밴드 기간</th>
                         <th>단위 금액</th>
@@ -260,6 +292,23 @@ function initData() {
         });
         coinData.globalUnit = 5000;
         coinData.performanceHistory = {};
+    }
+
+    // [추가됨] 30명의 투명 투자가들(실시간 백그라운드 봇)의 서랍장을 만들어요.
+    if (!coinData.multiSim) {
+        coinData.multiSim = {};
+        const pArr = [60, 120, 180, 240, 360];
+        const uArr = [5000, 10000, 15000, 20000, 25000, 30000];
+        pArr.forEach(p => {
+            uArr.forEach(u => {
+                const k = `${p}_${u}`;
+                coinData.multiSim[k] = { coins: {} };
+                coins.forEach(sym => {
+                    // 각 봇마다 코인별로 현금 100만원을 쥐어주고 시작을 기다립니다.
+                    coinData.multiSim[k].coins[sym] = { krw: 1000000, coin: 0, isNew: true };
+                });
+            });
+        });
     }
     
     const toast = document.getElementById('toast');
@@ -388,6 +437,10 @@ async function runCycle() {
 
         try {
             const closes = rawData.map(c => c.close);
+            const curPrice = rawData[rawData.length - 1].close;
+            const curTime = rawData[rawData.length - 1].time; 
+
+            // --- [1. 메인 화면 로직 (선택된 조합 하나만 그리기)] ---
             const emaCount = Math.floor(emaWindow / 10);
             const emaValues = calculateEMA(closes, emaCount);
             const stdValues = calculateRollingStd(closes, emaCount, emaCount);
@@ -405,8 +458,6 @@ async function runCycle() {
             obj.candle.setMarkers(target.markers || []);
             obj.chart.timeScale().fitContent();
 
-            const curPrice = rawData[rawData.length - 1].close;
-            const curTime = rawData[rawData.length - 1].time; 
             target.lastPrice = curPrice;
             target.lastTime = curTime; 
 
@@ -419,14 +470,64 @@ async function runCycle() {
             const lastIdx = emaValues.length - 1;
             const mid = emaValues[lastIdx];
             const std = stdValues[lastIdx];
-            const up3 = mid + std * 3;
-            const up15 = mid + std * 1.5;
-            const down15 = mid - std * 1.5;
+            
+            if (!isNaN(std)) {
+                const up3 = mid + std * 3;
+                const up15 = mid + std * 1.5;
+                const down15 = mid - std * 1.5;
 
-            if (curPrice >= up3) execute(symbol, 'sell', unitAmount * 2, curPrice);
-            else if (curPrice >= up15) execute(symbol, 'sell', unitAmount, curPrice);
-            else if (curPrice <= down15) execute(symbol, 'buy', unitAmount * 2, curPrice);
-            else if (curPrice <= mid) execute(symbol, 'buy', unitAmount, curPrice);
+                if (curPrice >= up3) execute(symbol, 'sell', unitAmount * 2, curPrice);
+                else if (curPrice >= up15) execute(symbol, 'sell', unitAmount, curPrice);
+                else if (curPrice <= down15) execute(symbol, 'buy', unitAmount * 2, curPrice);
+                else if (curPrice <= mid) execute(symbol, 'buy', unitAmount, curPrice);
+            }
+
+            // --- [추가됨: 2. 30조합 백그라운드 실시간 봇 로직] ---
+            const pArr = [60, 120, 180, 240, 360];
+            const uArr = [5000, 10000, 15000, 20000, 25000, 30000];
+            
+            pArr.forEach(p => {
+                // 각 기간(p)마다 볼린저 밴드를 한 번씩만 똑똑하게 계산해요.
+                const eCount = Math.floor(p / 10);
+                const eVals = calculateEMA(closes, eCount);
+                const sVals = calculateRollingStd(closes, eCount, eCount);
+                const lIdx = eVals.length - 1;
+                const m = eVals[lIdx];
+                const s = sVals[lIdx];
+                
+                if(isNaN(s)) return; // 아직 계산할 데이터가 모자라면 봇도 기다려요.
+
+                const u3 = m + s * 3;
+                const u15 = m + s * 1.5;
+                const d15 = m - s * 1.5;
+
+                uArr.forEach(u => {
+                    const k = `${p}_${u}`;
+                    const simData = coinData.multiSim[k].coins[symbol];
+                    
+                    if (simData.isNew) {
+                        simData.coin = 1000000 / curPrice; // 투명 봇들도 시작할 때 100만원어치 코인을 사요.
+                        simData.isNew = false;
+                    }
+
+                    // 투명 봇 각자의 규칙대로 사고 팝니다!
+                    if (curPrice >= u3) {
+                        let sellAmt = Math.min(simData.coin * curPrice, u * 2);
+                        if(sellAmt > 0) { simData.krw += sellAmt; simData.coin -= sellAmt / curPrice; }
+                    } else if (curPrice >= u15) {
+                        let sellAmt = Math.min(simData.coin * curPrice, u);
+                        if(sellAmt > 0) { simData.krw += sellAmt; simData.coin -= sellAmt / curPrice; }
+                    } else if (curPrice <= d15) {
+                        let buyAmt = u * 2;
+                        if(simData.krw >= buyAmt) { simData.krw -= buyAmt; simData.coin += buyAmt / curPrice; }
+                    } else if (curPrice <= m) {
+                        let buyAmt = u;
+                        if(simData.krw >= buyAmt) { simData.krw -= buyAmt; simData.coin += buyAmt / curPrice; }
+                    }
+                    
+                    simData.lastPrice = curPrice; // 랭킹을 매기기 위해 마지막 가격을 적어놔요.
+                });
+            });
 
         } catch (e) { console.error(symbol + " 차트 그리기 오류:", e); }
     }
@@ -510,12 +611,74 @@ function openReport() {
         });
     }
 }
-
 function closeReport() { document.getElementById('report-modal').style.display = 'none'; }
 
 
+// [추가됨] 30조합 실시간 레이스 현황판을 띄워주는 기능이에요!
+function openMultiSimReport() {
+    document.getElementById('multi-sim-modal').style.display = 'flex';
+    const tbody = document.querySelector('#multi-sim-table tbody');
+    tbody.innerHTML = '';
+    
+    if(!coinData.multiSim) return;
+
+    const pArr = [60, 120, 180, 240, 360];
+    const uArr = [5000, 10000, 15000, 20000, 25000, 30000];
+    let results = [];
+    const basePerCoinAsset = 2000000; // 코인 1개당 시작 자본금은 200만원(현금100+코인100)
+
+    // 30명의 봇들을 하나씩 불러와서 순수익을 계산해요.
+    pArr.forEach(p => {
+        uArr.forEach(u => {
+            const k = `${p}_${u}`;
+            const simGroup = coinData.multiSim[k];
+            let combiResult = { period: p, unit: u, coinsProfit: {}, totalProfit: 0 };
+            
+            coins.forEach(sym => {
+                const simData = simGroup.coins[sym];
+                if(simData && simData.lastPrice) {
+                    const finalAsset = simData.krw + (simData.coin * simData.lastPrice);
+                    const pureProfit = finalAsset - basePerCoinAsset;
+                    combiResult.coinsProfit[sym] = pureProfit;
+                    combiResult.totalProfit += pureProfit;
+                } else {
+                    combiResult.coinsProfit[sym] = 0;
+                }
+            });
+            results.push(combiResult);
+        });
+    });
+
+    // 총 합계 수익이 높은 봇부터 1등으로 줄을 세워요!
+    results.sort((a, b) => b.totalProfit - a.totalProfit);
+
+    const formatProfit = (val) => {
+        if(val === undefined) return `<td>-</td>`;
+        const color = val >= 0 ? '#2ecc71' : '#e74c3c'; 
+        return `<td style="color:${color}; font-weight:bold;">${Math.floor(val).toLocaleString()}원</td>`;
+    };
+
+    // 정렬된 봇들의 성적을 표에 예쁘게 그려줘요.
+    results.forEach((res, index) => {
+        tbody.innerHTML += `
+            <tr>
+                <td style="font-weight:bold; color:var(--main-blue);">${index + 1}위</td>
+                <td>${res.period}분</td>
+                <td>${res.unit.toLocaleString()}원</td>
+                ${formatProfit(res.coinsProfit['KRW-BTC'])}
+                ${formatProfit(res.coinsProfit['KRW-ETH'])}
+                ${formatProfit(res.coinsProfit['KRW-XRP'])}
+                ${formatProfit(res.coinsProfit['KRW-DOGE'])}
+                ${formatProfit(res.totalProfit)}
+            </tr>
+        `;
+    });
+}
+function closeMultiSimReport() { document.getElementById('multi-sim-modal').style.display = 'none'; }
+
+
 // -------------------------------------------------------------------
-// 백테스트 로직 (코인별 수익률 분리 수정됨!)
+// 백테스트 로직 (기존과 100% 동일)
 // -------------------------------------------------------------------
 async function runBacktest() {
     const startDateStr = document.getElementById('bt-start-date').value;
@@ -577,13 +740,10 @@ async function runBacktest() {
     const periods = [60, 120, 180, 240, 360];
     const units = [5000, 10000, 15000, 20000, 25000, 30000];
     let results = [];
-    
-    // [수정됨] 각 코인마다 시작할 때 자본금이 200만원(현금 100만 + 코인 100만치)이에요.
     const basePerCoinAsset = 2000000; 
 
     for(let p of periods) {
         for(let u of units) {
-            // [수정됨] 4개 합계를 뭉뚱그려 담던 상자를 버리고, 코인별 성적을 따로 담을 서랍장(객체)을 만들었어요!
             let combiResult = { period: p, unit: u, coinsProfit: {}, totalProfit: 0 };
             
             for(let symbol of coins) {
@@ -623,22 +783,19 @@ async function runBacktest() {
                     }
                 }
                 
-                // [수정됨] 해당 코인이 모의고사를 끝내면, 200만원을 빼서 '순수하게 번 돈(순수익)'만 서랍장에 넣어요.
                 const finalPrice = candles[candles.length - 1].trade_price;
                 const finalAsset = bt_balance + (bt_coin * finalPrice);
                 const pureProfit = finalAsset - basePerCoinAsset;
                 
                 combiResult.coinsProfit[symbol] = pureProfit;
-                combiResult.totalProfit += pureProfit; // 줄 세우기(랭킹)를 위해 합계도 계산은 해둬요.
+                combiResult.totalProfit += pureProfit;
             }
             results.push(combiResult);
         }
     }
 
-    // 랭킹은 4개 코인 합산 수익이 제일 높은 순서로 정렬해요.
     results.sort((a, b) => b.totalProfit - a.totalProfit); 
     
-    // [수정됨] 표에 그릴 때 예쁜 색깔로 바꿔주는 작은 기계(함수)예요.
     const formatProfit = (val) => {
         if(val === undefined) return `<td>-</td>`;
         const color = val >= 0 ? '#2ecc71' : '#e74c3c'; 
@@ -646,7 +803,6 @@ async function runBacktest() {
     };
 
     results.forEach((res, index) => {
-        // [수정됨] 이제 각 코인들의 서랍장을 열어서 표의 각 칸에 쏙쏙 집어넣어요.
         tbody.innerHTML += `
             <tr>
                 <td style="font-weight:bold; color:var(--main-blue);">${index + 1}위</td>
