@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V5.2 (API Fix)</title>
+    <title>통합 관제 스테이션 V5.4 (Fetch Error Handling)</title>
     <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -273,22 +273,49 @@ function changeUnit() {
 
 async function runCycle() {
     for (const symbol of coins) {
+        // 업비트 서버가 화내지 않게, 각 코인을 물어보기 전에 1.5초(1500ms)씩 넉넉하게 쉬어줍니다.
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        let rawData = null;
+
+        // 데이터를 한 번 못 가져와도 포기하지 않고 2번까지 다시 시도하는 똑똑한 기능이에요!
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                // [수정된 부분] 고장난 우체부(allorigins)를 빼고 업비트와 직접 통신합니다.
+                const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
+                const response = await fetch(apiUrl);
+                
+                // [수정된 부분] 만약 서버가 정상(200 OK)이 아니면 에러를 내뿜게 해서 뻗지 않게 막아요!
+                if (!response.ok) {
+                    throw new Error(`업비트 서버 접속 불량: ${response.status}`);
+                }
+
+                // 바로 JSON으로 바꾸지 않고 글자(text)로 먼저 받은 뒤에 안전하게 바꿔요.
+                const text = await response.text();
+                const json = JSON.parse(text); 
+                
+                if (json && json.length > 0) {
+                    rawData = json.reverse().map(item => ({
+                        time: Math.floor(new Date(item.candle_date_time_kst + '+09:00').getTime() / 1000),
+                        open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
+                    }));
+                    break; // 성공하면 재시도 반복문을 기분 좋게 빠져나와요!
+                }
+            } catch (err) {
+                if (attempt === 2) {
+                    console.error(`${symbol} 데이터를 2번 시도했지만 못 가져왔어요. 에러 원인: ${err.message}`);
+                } else {
+                    console.warn(`${symbol} 1차 시도 실패! 2초만 숨 고르고 다시 해볼게요...`);
+                    // 실패했다면 2초(2000ms)를 더 쉬고 다시 시도해요.
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+        }
+
+        // 끝까지 데이터를 못 가져왔으면 에러를 내지 않고 그냥 다음 코인으로 부드럽게 넘어가요.
+        if (!rawData) continue;
+
         try {
-            // [수정된 부분!] 
-            // 업비트 서버가 화내지 않게, 각 코인을 물어보기 전에 0.5초(500ms)씩 잠깐 쉬어줍니다.
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            const apiUrl = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200`;
-            const response = await fetch(apiUrl);
-            const json = await response.json(); 
-            
-            if (!json || json.length === 0) throw new Error("데이터 응답 없음");
-            
-            const rawData = json.reverse().map(item => ({
-                time: Math.floor(new Date(item.candle_date_time_kst + '+09:00').getTime() / 1000),
-                open: item.opening_price, high: item.high_price, low: item.low_price, close: item.trade_price
-            }));
-
             const closes = rawData.map(c => c.close);
             const emaCount = Math.floor(emaWindow / 10);
             const emaValues = calculateEMA(closes, emaCount);
@@ -335,7 +362,7 @@ async function runCycle() {
                 execute(symbol, 'buy', unitAmount, curPrice);
             }
 
-        } catch (e) { console.error(symbol + " 오류:", e); }
+        } catch (e) { console.error(symbol + " 차트 그리기 오류:", e); }
     }
     
     updateUI();
