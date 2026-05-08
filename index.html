@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>통합 관제 스테이션 V6.4 (Backtest Monitor)</title>
-    <!-- 그래프를 그려주는 마법 도구를 가져와요 -->
+    <title>통합 관제 스테이션 V6.5 (Timer & Marker Fix)</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root { 
@@ -95,16 +94,14 @@
         </div>
     </div>
 
-    <!-- 1. 첫 화면 (대기실) -->
     <div id="screen-welcome" class="screen active-screen">
-        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.4</h1>
+        <h1 style="color: var(--main-blue);">통합 관제 스테이션 V6.5</h1>
         <p style="color: #bdc3c7; margin-bottom: 40px;">원하시는 작업 모드를 선택해 주세요.</p>
         
         <button class="btn btn-huge btn-green" onclick="startRealtimeMode()">🚀 실시간 시뮬레이션 시작</button>
         <button class="btn btn-huge btn-purple" onclick="startBacktestMode()">⏪ 과거 백테스트 시작 (개별 코인 분석)</button>
     </div>
 
-    <!-- 2. 실시간 시뮬레이션 화면 -->
     <div id="screen-realtime" class="screen">
         <button class="btn btn-gray" onclick="goHome()">⬅️ 첫 화면으로 돌아가기</button>
 
@@ -160,7 +157,6 @@
         <div id="charts-area"></div>
     </div>
 
-    <!-- 3. 백테스트 화면 (타임머신) -->
     <div id="screen-backtest" class="screen">
         <button class="btn btn-gray" onclick="goHome()">⬅️ 첫 화면으로 돌아가기</button>
         
@@ -180,7 +176,6 @@
 
         <div class="card">
             <h3>🏆 백테스트 결과 (코인별 순수익 분석)</h3>
-            <!-- [추가됨] 글씨를 더 크고 굵게 만들어서 진행 상황이 잘 보이게 했어요! -->
             <div class="status-bar" id="bt-status" style="color:#f1c40f; font-size: 14px; font-weight: bold; margin-bottom: 10px; background: #000; padding: 10px; border-radius: 5px;">날짜를 선택하고 실행을 눌러주세요.</div>
             <table id="bt-result-table">
                 <thead>
@@ -230,6 +225,12 @@ function startRealtimeMode() {
     switchScreen('screen-realtime');
     initData();
     initCharts();
+
+    // 🚨 [핵심 수정 1] 화면을 이동할 때마다 중복으로 생기던 타이머(로봇)들을 깨끗하게 지웁니다!
+    if (runCycleInterval) clearInterval(runCycleInterval);
+    if (syncInterval) clearInterval(syncInterval);
+    if (scrollInterval) clearInterval(scrollInterval);
+
     runCycle(); 
     requestWakeLock();
 
@@ -284,7 +285,7 @@ function initData() {
         if (!coinData.performanceHistory) coinData.performanceHistory = {};
     } else { 
         coins.forEach(s => {
-            coinData[s] = { balance: 1000000, coin: 0, lastPrice: 0, logs: [], markers: [], isNewAccount: true };
+            coinData[s] = { balance: 1000000, coin: 0, lastPrice: 0, logs: [], markers: [], isNewAccount: true, lastTradeCandle: 0 };
         });
         coinData.globalUnit = 5000;
         coinData.performanceHistory = {};
@@ -299,7 +300,7 @@ function initData() {
                 const k = `${p}_${u}`;
                 coinData.multiSim[k] = { coins: {} };
                 coins.forEach(sym => {
-                    coinData.multiSim[k].coins[sym] = { krw: 1000000, coin: 0, isNew: true };
+                    coinData.multiSim[k].coins[sym] = { krw: 1000000, coin: 0, isNew: true, lastTradeCandle: 0 };
                 });
             });
         });
@@ -311,7 +312,7 @@ function initData() {
 }
 
 function resetData() {
-    if(confirm("모든 데이터를 초기화하고 다시 시작할까요?")) {
+    if(confirm("모든 데이터를 초기화하고 다시 시작할까요? (차트가 너무 느리면 꼭 눌러주세요!)")) {
         localStorage.removeItem('crypto_sim_v4_4');
         location.reload();
     }
@@ -501,18 +502,24 @@ async function runCycle() {
                         simData.isNew = false;
                     }
 
-                    if (curPrice >= u3) {
-                        let sellAmt = Math.min(simData.coin * curPrice, u * 2);
-                        if(sellAmt > 0) { simData.krw += sellAmt; simData.coin -= sellAmt / curPrice; }
-                    } else if (curPrice >= u15) {
-                        let sellAmt = Math.min(simData.coin * curPrice, u);
-                        if(sellAmt > 0) { simData.krw += sellAmt; simData.coin -= sellAmt / curPrice; }
-                    } else if (curPrice <= d15) {
-                        let buyAmt = u * 2;
-                        if(simData.krw >= buyAmt) { simData.krw -= buyAmt; simData.coin += buyAmt / curPrice; }
-                    } else if (curPrice <= m) {
-                        let buyAmt = u;
-                        if(simData.krw >= buyAmt) { simData.krw -= buyAmt; simData.coin += buyAmt / curPrice; }
+                    // 🚨 [핵심 수정 2] 백그라운드 봇들도 똑같이 같은 캔들에서 중복 매매하지 않도록 방어합니다.
+                    if (simData.lastTradeCandle !== curTime) {
+                        let traded = false;
+                        if (curPrice >= u3) {
+                            let sellAmt = Math.min(simData.coin * curPrice, u * 2);
+                            if(sellAmt > 0) { simData.krw += sellAmt; simData.coin -= sellAmt / curPrice; traded = true; }
+                        } else if (curPrice >= u15) {
+                            let sellAmt = Math.min(simData.coin * curPrice, u);
+                            if(sellAmt > 0) { simData.krw += sellAmt; simData.coin -= sellAmt / curPrice; traded = true; }
+                        } else if (curPrice <= d15) {
+                            let buyAmt = u * 2;
+                            if(simData.krw >= buyAmt) { simData.krw -= buyAmt; simData.coin += buyAmt / curPrice; traded = true; }
+                        } else if (curPrice <= m) {
+                            let buyAmt = u;
+                            if(simData.krw >= buyAmt) { simData.krw -= buyAmt; simData.coin += buyAmt / curPrice; traded = true; }
+                        }
+                        
+                        if (traded) simData.lastTradeCandle = curTime;
                     }
                     
                     simData.lastPrice = curPrice; 
@@ -529,15 +536,30 @@ async function runCycle() {
 
 function execute(symbol, type, krw, price) {
     const data = coinData[symbol];
+
+    // 🚨 [핵심 수정 3] 10분(하나의 캔들) 안에서는 오직 한 번만 거래하도록 방어막을 칩니다!
+    if (data.lastTradeCandle === data.lastTime) return;
+
     if (type === 'buy' && data.balance >= krw) {
         data.balance -= krw; data.coin += krw / price;
         addLog(symbol, `🟢 매수: ${krw.toLocaleString()}원 (가격: ${price.toLocaleString()})`);
-        data.markers.push({ time: data.lastTime, position: 'belowBar', color: '#2ecc71', shape: 'star', text: '매수' });
+        
+        // 🚨 [핵심 수정 4] 'star' 모양 대신 마법 도구가 알아듣는 'circle'(동그란 점) 모양으로 바꿨습니다!
+        data.markers.push({ time: data.lastTime, position: 'belowBar', color: '#2ecc71', shape: 'circle', text: '매수', size: 1 });
+        data.lastTradeCandle = data.lastTime;
     } else if (type === 'sell' && data.coin > 0) {
         const sellAmt = Math.min(data.coin * price, krw);
         data.balance += sellAmt; data.coin -= sellAmt / price;
         addLog(symbol, `🔴 매도: ${Math.floor(sellAmt).toLocaleString()}원 (가격: ${price.toLocaleString()})`);
-        data.markers.push({ time: data.lastTime, position: 'aboveBar', color: '#e74c3c', shape: 'star', text: '매도' });
+        
+        // 'star' 대신 'circle'로 수정!
+        data.markers.push({ time: data.lastTime, position: 'aboveBar', color: '#e74c3c', shape: 'circle', text: '매도', size: 1 });
+        data.lastTradeCandle = data.lastTime;
+    }
+
+    // 🚨 [보너스 수정] 차트에 점이 너무 많아져서 렉이 걸리지 않도록 항상 최근 100개까지만 유지합니다.
+    if (data.markers.length > 100) {
+        data.markers = data.markers.slice(-100);
     }
 }
 
@@ -664,7 +686,7 @@ function closeMultiSimReport() { document.getElementById('multi-sim-modal').styl
 
 
 // -------------------------------------------------------------------
-// 백테스트 로직 (실시간 모니터링 기능 추가됨!)
+// 백테스트 로직 
 // -------------------------------------------------------------------
 async function runBacktest() {
     const startDateStr = document.getElementById('bt-start-date').value;
@@ -685,7 +707,6 @@ async function runBacktest() {
         return;
     }
 
-    // 1단계: 과거 데이터 가져오기 중계
     tbody.innerHTML = '';
     let btData = {};
     
@@ -695,7 +716,6 @@ async function runBacktest() {
         
         while(true) {
             try {
-                // [수정됨] 화면에 현재 무슨 코인을 몇 개나 가져왔는지 실시간으로 글씨를 바꿔줍니다.
                 statusDiv.innerText = `⏳ 타임머신 작동 중... ${coinNames[symbol]} 과거 데이터 수집 중 (${allCandles.length}개 완료)`;
                 
                 const url = `https://api.upbit.com/v1/candles/minutes/10?market=${symbol}&count=200&to=${toDateStr}`;
@@ -723,23 +743,19 @@ async function runBacktest() {
         }).reverse();
     }
 
-    // 2단계: 모의고사 30개 진행 상황 중계
     const periods = [60, 120, 180, 240, 360];
     const units = [5000, 10000, 15000, 20000, 25000, 30000];
     let results = [];
     const basePerCoinAsset = 2000000; 
     
-    // 진행 상황을 표시하기 위한 변수예요
-    const totalCombinations = periods.length * units.length; // 30개
+    const totalCombinations = periods.length * units.length; 
     let currentComboCount = 0; 
 
     for(let p of periods) {
         for(let u of units) {
             currentComboCount++;
-            // [수정됨] 현재 로봇이 몇 번째 조합을 풀고 있는지 화면에 띄워줍니다.
             statusDiv.innerText = `🧠 모의고사 진행 중... [${p}분 / ${u.toLocaleString()}원] 조합 계산 중 (${currentComboCount} / ${totalCombinations} 완료)`;
             
-            // [수정됨 - 핵심!] 컴퓨터 일꾼이 화면(UI)에 글씨를 적을 수 있도록 0.01초씩 아주 잠깐 숨을 쉬게 해줍니다.
             await new Promise(r => setTimeout(r, 10));
 
             let combiResult = { period: p, unit: u, coinsProfit: {}, totalProfit: 0 };
@@ -815,7 +831,6 @@ async function runBacktest() {
         `;
     });
 
-    // 계산이 다 끝나면 최종 완료 메시지로 바꿔줍니다.
     statusDiv.innerText = "🎉 백테스트가 완료되었습니다! 코인별 성적을 비교해 보세요.";
     statusDiv.style.color = "#2ecc71";
 }
